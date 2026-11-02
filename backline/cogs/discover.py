@@ -106,7 +106,10 @@ class Discover(commands.Cog):
     async def _ensure_meta(self, post: dict) -> dict:
         if str(post.get("external_id", "")).startswith("demo-"):
             return post
-        stale = not post.get("meta_at") or (post["platform"] == "tiktok" and now() - post["meta_at"] > META_REFRESH)
+        age = now() - (post.get("meta_at") or 0)
+        stale = (not post.get("meta_at")
+                 or (post["platform"] == "tiktok" and not post.get("cover_path") and age > META_REFRESH)
+                 or (not post.get("thumb_url") and not post.get("cover_path") and age > 6 * 3600))
         if not stale:
             return post
         title, thumb = await self.bot.collectors.post_meta(post["platform"], post["url"], post["external_id"])
@@ -307,8 +310,8 @@ class Discover(commands.Cog):
         tiles = await self._tiles(posts)
         out = []
         for t, p in zip(tiles, posts):
-            cover = None
-            if t.cover:
+            cover = p.get("cover_path")   # capa já copiada para o bucket: reaproveita (URLs do Instagram expiram)
+            if not cover and t.cover:
                 try:
                     img = Image.open(io.BytesIO(t.cover)).convert("RGB")
                     img.thumbnail((720, 720))
@@ -316,6 +319,7 @@ class Discover(commands.Cog):
                     img.save(buf, "JPEG", quality=85)
                     cover = f"covers/{p['id']}.jpg"
                     await self._upload(base, headers, cover, buf.getvalue(), "image/jpeg")
+                    await db.execute("UPDATE posts SET cover_path=? WHERE id=?", (cover, p["id"]))
                 except Exception:  # noqa: BLE001
                     cover = None
             out.append({"id": p["id"], "title": t.title, "artist": t.artist, "genre": t.genre, "badge": t.badge,

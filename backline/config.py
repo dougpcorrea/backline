@@ -44,6 +44,7 @@ class Config:
     apify_token: str = os.getenv("APIFY_TOKEN", "")
     apify_ig_comments: str = os.getenv("APIFY_IG_COMMENTS_ACTOR", "apify~instagram-comment-scraper")
     apify_ig_profile: str = os.getenv("APIFY_IG_PROFILE_ACTOR", "apify~instagram-profile-scraper")
+    apify_ig_post: str = os.getenv("APIFY_IG_POST_ACTOR", "apify~instagram-scraper")
     apify_tt_comments: str = os.getenv("APIFY_TT_COMMENTS_ACTOR", "clockworks~tiktok-comments-scraper")
     apify_tt_profile: str = os.getenv("APIFY_TT_PROFILE_ACTOR", "clockworks~tiktok-profile-scraper")
     apify_ig_following: str = os.getenv("APIFY_IG_FOLLOWING_ACTOR", "coderx~instagram-followers-following-scraper-no-cookies-login")

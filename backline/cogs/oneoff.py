@@ -26,6 +26,7 @@ class OneOff(commands.Cog):
         try:
             await self.reset_testers()
             await self.seed_posts()
+            await self.refetch_instagram_meta()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -62,6 +63,18 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def refetch_instagram_meta(self) -> None:
+        """Posts do Instagram cadastrados antes da busca de capa/título: buscar agora."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_ig_meta_v1"):
+            return
+        await db.set_setting("oneoff_ig_meta_v1", "1")
+        await db.execute("UPDATE posts SET meta_at=NULL WHERE platform='instagram' AND thumb_url IS NULL "
+                         "AND external_id NOT LIKE 'demo-%'")
+        disc = self.bot.get_cog("Discover")
+        if disc:
+            await disc.publish_data()
 
     async def seed_posts(self) -> None:
         db = self.bot.db

@@ -9,6 +9,7 @@ leitura dos resultados é defensiva (tenta vários nomes de campo).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -243,6 +244,8 @@ class Collectors:
 
         Instagram não tem oEmbed sem token do Facebook: volta (None, None) e o cartão fica sem imagem.
         """
+        if platform == "instagram":
+            return await self.instagram_post_meta(url)
         endpoints = {"youtube": "https://www.youtube.com/oembed", "tiktok": "https://www.tiktok.com/oembed"}
         if platform not in endpoints:
             return None, None
@@ -258,6 +261,28 @@ class Collectors:
         if platform == "youtube":
             thumb = f"https://i.ytimg.com/vi/{external_id}/hqdefault.jpg"  # não expira
         return (title or None), thumb
+
+    async def instagram_post_meta(self, url: str) -> tuple[str | None, str | None]:
+        """Capa e 'título' (1ª linha da legenda) de um post do Instagram via Apify. A URL da capa expira
+        em poucos dias, por isso o Discover copia a imagem para o armazenamento próprio logo depois."""
+        try:
+            items = await self._apify(self.cfg.apify_ig_post, {
+                "directUrls": [url], "resultsType": "posts", "resultsLimit": 1, "addParentData": False})
+        except CollectorError:
+            return None, None
+        if not items:
+            return None, None
+        it = items[0]
+        title = None
+        for line in (it.get("caption") or "").splitlines():
+            line = re.sub(r"[#@]\S+", "", line).strip(" -–—·|")
+            if len(line) >= 2:
+                title = line[:70].rstrip() + ("…" if len(line) > 70 else "")
+                break
+        if not title and it.get("ownerUsername"):
+            title = f"@{it['ownerUsername']} on Instagram"
+        thumb = it.get("displayUrl") or (it.get("images") or [None])[0]
+        return title, thumb
 
     async def resolve_redirect(self, url: str) -> str:
         """Expande links curtos (ex.: vm.tiktok.com)."""
