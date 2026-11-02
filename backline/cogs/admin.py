@@ -25,28 +25,19 @@ Platform = Literal["instagram", "tiktok", "youtube"]
 
 
 class WelcomeModal(discord.ui.Modal, title="Texto do #start-here"):
-    def __init__(self, bot, current: str):
-        super().__init__(timeout=1800)
-        self.bot = bot
+    """O envio é tratado em Admin.on_interaction (pelo custom_id), não aqui: assim funciona
+    mesmo se o bot reiniciar (atualização) enquanto a janela está aberta."""
+
+    def __init__(self, current: str):
+        super().__init__(timeout=None, custom_id="bl:welcome_modal")
         self.text = discord.ui.TextInput(
-            label="Texto (Markdown do Discord)",
+            label="Texto (Markdown do Discord)", custom_id="bl:welcome_text",
             placeholder="{post} {discover} {mutual} viram links dos canais",
             style=discord.TextStyle.paragraph, default=current[:4000], max_length=4000, required=False)
         self.add_item(self.text)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
-        value = self.text.value.strip()
-        if value:
-            await self.bot.db.set_setting("welcome_text", value)
-            note = "✅ Texto do #start-here atualizado."
-        else:
-            await self.bot.db.execute("DELETE FROM settings WHERE key='welcome_text'")
-            note = "↩️ Campo vazio: voltei para o texto padrão."
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        setup = self.bot.get_cog("ServerSetup")
-        if setup and interaction.guild:
-            await setup.refresh_welcome(interaction.guild)
-        await interaction.followup.send(note, ephemeral=True)
+        return  # tratado em Admin.on_interaction
 
 
 class Admin(commands.Cog):
@@ -363,7 +354,36 @@ class Admin(commands.Cog):
     async def welcome(self, interaction: discord.Interaction) -> None:
         from ..welcome import DEFAULT_TEXT
         current = await self.bot.db.get_setting("welcome_text") or DEFAULT_TEXT
-        await interaction.response.send_modal(WelcomeModal(self.bot, current))
+        await interaction.response.send_modal(WelcomeModal(current))
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type != discord.InteractionType.modal_submit:
+            return
+        if (interaction.data or {}).get("custom_id") != "bl:welcome_modal":
+            return
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("Só administradores.", ephemeral=True)
+            return
+        value = ""
+        for row in interaction.data.get("components", []):
+            for comp in row.get("components", []) or ([row.get("component")] if row.get("component") else []):
+                if comp and comp.get("custom_id") == "bl:welcome_text":
+                    value = (comp.get("value") or "").strip()
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        if value:
+            await self.bot.db.set_setting("welcome_text", value)
+            note = "✅ Texto do #start-here atualizado."
+        else:
+            await self.bot.db.execute("DELETE FROM settings WHERE key='welcome_text'")
+            note = "↩️ Campo vazio: voltei para o texto padrão."
+        setup = self.bot.get_cog("ServerSetup")
+        try:
+            if setup and interaction.guild:
+                await setup.refresh_welcome(interaction.guild)
+        except Exception as e:  # noqa: BLE001
+            note += f"\n⚠️ Não consegui redesenhar o painel: `{str(e)[:200]}`"
+        await interaction.followup.send(note, ephemeral=True)
 
     @admin.command(name="unverify", description="Tirar a verificação de um perfil")
     async def unverify(self, interaction: discord.Interaction, member: discord.Member, platform: Platform) -> None:
