@@ -29,7 +29,8 @@ class WelcomeModal(discord.ui.Modal, title="Texto do #start-here"):
         super().__init__(timeout=1800)
         self.bot = bot
         self.text = discord.ui.TextInput(
-            label="Markdown · {post} {discover} {mutual} = canais",
+            label="Texto (Markdown do Discord)",
+            placeholder="{post} {discover} {mutual} viram links dos canais",
             style=discord.TextStyle.paragraph, default=current[:4000], max_length=4000, required=False)
         self.add_item(self.text)
 
