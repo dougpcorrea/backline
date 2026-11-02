@@ -20,7 +20,7 @@ MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "5"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "6"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -28,6 +28,7 @@ COLLAB_TAGS = ["Vocals", "Production", "Instrumental", "Songwriting", "Mixing / 
                "Remix", "Feature"]
 COLLAB_GUIDE = ("Propose a collaboration: one post per idea. Say what you're making, what you need "
                 "(vocals, production, mixing…), your genre, links to your work and how you'd like to split credits.")
+DISCOVER_VOICE = "🎧 Discover"
 VOICE_ROOMS = ["🎙️ Room 1", "🎙️ Room 2", "🎙️ Room 3"]
 
 # chave, nome, visível para (everyone | member | recruiter | admin), membros podem escrever?, categoria
@@ -272,6 +273,21 @@ class ServerSetup(commands.Cog):
                 else:
                     await vc.edit(name=name, category=vcat, overwrites=vow, reason="Backline setup")
                 await self.bot.db.set_setting(f"vc_{i}", vc.id)
+
+            # canal de voz do Discover: abre a Activity em tela cheia, sem chat; ninguém fala
+            dow = {guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                   member_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=False,
+                                                            stream=False, use_embedded_activities=True),
+                   guild.me: discord.PermissionOverwrite(view_channel=True, connect=True)}
+            did = await self.bot.db.get_int_setting("vc_discover")
+            dvc = guild.get_channel(did) if did else None
+            dvc = dvc or discord.utils.get(guild.voice_channels, name=DISCOVER_VOICE)
+            if dvc is None:
+                dvc = await guild.create_voice_channel(DISCOVER_VOICE, category=vcat, overwrites=dow, position=0,
+                                                       reason="Backline setup")
+            else:
+                await dvc.edit(name=DISCOVER_VOICE, category=vcat, overwrites=dow, reason="Backline setup")
+            await self.bot.db.set_setting("vc_discover", dvc.id)
 
             # O Discord mostra o card "Welcome to <server> / brand new, shiny server" no
             # canal de mensagens do sistema. Manda ele (e os avisos de entrada) pro canal admin.
