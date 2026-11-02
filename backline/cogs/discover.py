@@ -113,9 +113,9 @@ class Discover(commands.Cog):
         if not stale:
             return post
         title, thumb = await self.bot.collectors.post_meta(post["platform"], post["url"], post["external_id"])
-        await self.bot.db.execute("UPDATE posts SET title=COALESCE(?, title), thumb_url=?, meta_at=? WHERE id=?",
+        await self.bot.db.execute("UPDATE posts SET title=COALESCE(title, ?), thumb_url=?, meta_at=? WHERE id=?",
                                   (title, thumb, now(), post["id"]))
-        post.update(title=title or post.get("title"), thumb_url=thumb, meta_at=now())
+        post.update(title=post.get("title") or title, thumb_url=thumb, meta_at=now())
         return post
 
     async def candidates(self, viewer_id: int) -> list[Candidate]:
@@ -198,8 +198,13 @@ class Discover(commands.Cog):
                               (post["user_id"],))
         s = await db.fetchone("SELECT level FROM scores WHERE user_id=?", (post["user_id"],))
         level = (m and m["manual_level"]) or (s and s["level"]) or 1
-        genres = [r["genre"] for r in await db.fetchall("SELECT genre FROM member_genres WHERE user_id=?",
-                                                         (post["user_id"],))]
+        if post.get("genres"):
+            genres = [g for g in post["genres"].split(",") if g]
+        else:
+            genres = [r["genre"] for r in await db.fetchall("SELECT genre FROM member_genres WHERE user_id=?",
+                                                             (post["user_id"],))]
+        if post.get("kind") == "cover":
+            genres = genres + ["Cover"]
         if m and m["demo_name"]:
             artist = m["demo_name"]
         else:

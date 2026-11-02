@@ -168,6 +168,8 @@ MIGRATIONS = [
     "ALTER TABLE members ADD COLUMN demo_name TEXT",
     "ALTER TABLE posts ADD COLUMN cover_path TEXT",
     "ALTER TABLE members ADD COLUMN verify_tried INTEGER DEFAULT 0",
+    "ALTER TABLE posts ADD COLUMN kind TEXT",
+    "ALTER TABLE posts ADD COLUMN genres TEXT",
 ]
 
 

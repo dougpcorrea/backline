@@ -239,50 +239,63 @@ class Collectors:
             return await self.tiktok_comments(url)
         raise ValueError(platform)
 
-    async def post_meta(self, platform: str, url: str, external_id: str) -> tuple[str | None, str | None]:
-        """Título e miniatura da publicação, sem gastar créditos (oEmbed público).
+    async def post_details(self, platform: str, url: str, external_id: str) -> dict:
+        """Confere se a publicação existe e traz título, capa e dono.
 
-        Instagram não tem oEmbed sem token do Facebook: volta (None, None) e o cartão fica sem imagem.
+        found: True (existe), False (não existe/privada) ou None (não deu para conferir agora).
+        YouTube/TikTok usam oEmbed (grátis); Instagram usa Apify (frações de centavo por post).
         """
         if platform == "instagram":
-            return await self.instagram_post_meta(url)
+            return await self.instagram_post_details(url)
         endpoints = {"youtube": "https://www.youtube.com/oembed", "tiktok": "https://www.tiktok.com/oembed"}
+        out = {"found": None, "title": None, "thumb": None, "owner": None}
         if platform not in endpoints:
-            return None, None
-        title = thumb = None
+            return out
         try:
             async with self.session.get(endpoints[platform], params={"url": url, "format": "json"},
                                         timeout=aiohttp.ClientTimeout(total=15)) as r:
                 if r.status == 200:
                     data = await r.json(content_type=None)
-                    title, thumb = data.get("title"), data.get("thumbnail_url")
+                    out.update(found=True, title=data.get("title") or None, thumb=data.get("thumbnail_url"))
+                    author = data.get("author_unique_id") or data.get("author_url") or ""
+                    out["owner"] = author.rstrip("/").rsplit("@", 1)[-1].lower() or None
+                elif r.status in (400, 401, 403, 404):
+                    out["found"] = False
         except (aiohttp.ClientError, ValueError):
             pass
-        if platform == "youtube":
-            thumb = f"https://i.ytimg.com/vi/{external_id}/hqdefault.jpg"  # não expira
-        return (title or None), thumb
+        if platform == "youtube" and out["found"] is not False:
+            out["thumb"] = f"https://i.ytimg.com/vi/{external_id}/hqdefault.jpg"  # não expira
+        return out
 
-    async def instagram_post_meta(self, url: str) -> tuple[str | None, str | None]:
-        """Capa e 'título' (1ª linha da legenda) de um post do Instagram via Apify. A URL da capa expira
-        em poucos dias, por isso o Discover copia a imagem para o armazenamento próprio logo depois."""
+    async def post_meta(self, platform: str, url: str, external_id: str) -> tuple[str | None, str | None]:
+        d = await self.post_details(platform, url, external_id)
+        return d["title"], d["thumb"]
+
+    async def instagram_post_details(self, url: str) -> dict:
+        """Capa, 'título' (1ª linha da legenda) e dono de um post do Instagram via Apify. A URL da capa
+        expira em poucos dias, por isso o Discover copia a imagem para o armazenamento próprio."""
+        out = {"found": None, "title": None, "thumb": None, "owner": None}
         try:
             items = await self._apify(self.cfg.apify_ig_post, {
                 "directUrls": [url], "resultsType": "posts", "resultsLimit": 1, "addParentData": False})
         except CollectorError:
-            return None, None
+            return out
+        items = [i for i in items if i.get("displayUrl") or i.get("shortCode") or i.get("ownerUsername")]
         if not items:
-            return None, None
+            out["found"] = False
+            return out
         it = items[0]
-        title = None
+        out["found"] = True
+        out["owner"] = (it.get("ownerUsername") or "").lower() or None
         for line in (it.get("caption") or "").splitlines():
             line = re.sub(r"[#@]\S+", "", line).strip(" -–—·|")
             if len(line) >= 2:
-                title = line[:70].rstrip() + ("…" if len(line) > 70 else "")
+                out["title"] = line[:70].rstrip() + ("…" if len(line) > 70 else "")
                 break
-        if not title and it.get("ownerUsername"):
-            title = f"@{it['ownerUsername']} on Instagram"
-        thumb = it.get("displayUrl") or (it.get("images") or [None])[0]
-        return title, thumb
+        if not out["title"] and out["owner"]:
+            out["title"] = f"@{out['owner']} on Instagram"
+        out["thumb"] = it.get("displayUrl") or (it.get("images") or [None])[0]
+        return out
 
     async def resolve_redirect(self, url: str) -> str:
         """Expande links curtos (ex.: vm.tiktok.com)."""

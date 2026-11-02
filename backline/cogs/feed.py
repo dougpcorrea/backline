@@ -27,21 +27,41 @@ class PostPanelView(discord.ui.View):
         self.add_item(btn)
 
     async def on_click(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_modal(PostModal(self.bot, lang_of(interaction.locale)))
+        await open_post_modal(self.bot, interaction)
 
 
 class PostModal(discord.ui.Modal):
-    def __init__(self, bot, lang: str):
-        super().__init__(title=t("modal_post", lang), timeout=600)
+    def __init__(self, bot, lang: str, member_genres: list[str] | None = None):
+        super().__init__(title=t("modal_post", lang), timeout=900)
         self.bot, self.lang = bot, lang
-        self.link = discord.ui.TextInput(label=t("field_link", lang), max_length=300,
-                                         placeholder="https://www.instagram.com/reel/...")
-        self.add_item(self.link)
+        self.link = discord.ui.TextInput(max_length=300, placeholder="https://www.instagram.com/reel/...")
+        self.title_in = discord.ui.TextInput(max_length=80, required=False,
+                                             placeholder="Leave empty to use the title from the post")
+        self.kind = discord.ui.Select(placeholder="Original song or cover?", min_values=1, max_values=1, options=[
+            discord.SelectOption(label="Original", value="original", emoji="✍️", description="Your own song"),
+            discord.SelectOption(label="Cover", value="cover", emoji="🎤", description="Your version of someone's song"),
+        ])
+        mg = set(member_genres or [])
+        self.genres = discord.ui.Select(placeholder="Pick 1–3 genres", min_values=1, max_values=3, options=[
+            discord.SelectOption(label=g, value=g, default=g in mg) for g in bot.cfg.genres[:25]])
+        self.add_item(discord.ui.Label(text="Post link", description="Instagram, TikTok or YouTube",
+                                       component=self.link))
+        self.add_item(discord.ui.Label(text="Title (optional)", component=self.title_in))
+        self.add_item(discord.ui.Label(text="Original or cover?", component=self.kind))
+        self.add_item(discord.ui.Label(text="Genres", component=self.genres))
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-        msg = await self.bot.get_cog("Feed").submit(interaction.user, self.link.value, self.lang)
+        msg = await self.bot.get_cog("Feed").submit(
+            interaction.user, self.link.value, self.lang, title=self.title_in.value.strip() or None,
+            kind=(self.kind.values or ["original"])[0], genres=list(self.genres.values))
         await interaction.followup.send(msg, ephemeral=True)
+
+
+async def open_post_modal(bot, interaction: discord.Interaction) -> None:
+    genres = [r["genre"] for r in await bot.db.fetchall(
+        "SELECT genre FROM member_genres WHERE user_id=?", (interaction.user.id,))]
+    await interaction.response.send_modal(PostModal(bot, lang_of(interaction.locale), genres))
 
 
 class Feed(commands.Cog):
@@ -52,9 +72,10 @@ class Feed(commands.Cog):
     @app_commands.command(name="post", description="Share a new work in the feed")
     @app_commands.guild_only()
     async def post_cmd(self, interaction: discord.Interaction) -> None:
-        await interaction.response.send_modal(PostModal(self.bot, lang_of(interaction.locale)))
+        await open_post_modal(self.bot, interaction)
 
-    async def submit(self, user: discord.abc.User, raw_url: str, lang: str) -> str:
+    async def submit(self, user: discord.abc.User, raw_url: str, lang: str, title: str | None = None,
+                     kind: str = "original", genres: list[str] | None = None) -> str:
         bot, db = self.bot, self.bot.db
         member = await db.get_member(user.id)
         if not member or not member["verified_at"]:
@@ -65,7 +86,9 @@ class Feed(commands.Cog):
             url = await bot.collectors.resolve_redirect(url if "://" in url else "https://" + url)
         link = parse_post_url(url)
         if not link:
-            return t("err_bad_link", lang)
+            return ("❌ That doesn't look like a post link. Paste the link of a specific **Instagram post/reel**, "
+                    "**TikTok video** or **YouTube video/short** — not a profile or channel link.")
+        tester = bool(member["is_test"]) and not member["demo_name"]
 
         handle = await db.fetchone("SELECT * FROM handles WHERE user_id=? AND platform=? AND verified=1",
                                    (user.id, link.platform))
@@ -88,18 +111,30 @@ class Feed(commands.Cog):
                              (link.platform, link.external_id)):
             return t("err_duplicate", lang)
 
+        # a publicação existe mesmo? (e, no Instagram, é da conta verificada?)
+        details = {"found": None, "title": None, "thumb": None, "owner": None}
+        if not tester:
+            details = await bot.collectors.post_details(link.platform, link.url, link.external_id)
+            if details["found"] is False:
+                return (f"❌ I couldn't find that {PLATFORM_NAME[link.platform]} post. Check the link and make sure "
+                        "the post is **public**.")
+            if (link.platform in ("instagram", "tiktok") and details["owner"]
+                    and details["owner"] != handle["handle"].lower()):
+                return t("err_not_owner", lang, platform=PLATFORM_NAME[link.platform], handle=handle["handle"])
+
         recent = await posts_in_last_week(db, user.id)
         limit = bot.cfg.posts_per_week
         if len(recent) >= limit:
             free_at = recent[0]["created_at"] + WEEK
             return t("err_limit", lang, n=limit, when=f"<t:{free_at}:R>")
 
+        valid = [g for g in (genres or []) if g in bot.cfg.genres][:3]
         post_id = await db.insert_returning_id(
-            "INSERT INTO posts(user_id, platform, url, external_id, created_at) VALUES(?,?,?,?,?)",
-            (user.id, link.platform, link.url, link.external_id, now()))
-        title, thumb = await bot.collectors.post_meta(link.platform, link.url, link.external_id)
-        await db.execute("UPDATE posts SET title=?, thumb_url=?, meta_at=? WHERE id=?",
-                         (title, thumb, now(), post_id))
+            "INSERT INTO posts(user_id, platform, url, external_id, created_at, title, thumb_url, meta_at, kind, genres) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
+            (user.id, link.platform, link.url, link.external_id, now(), title or details["title"],
+             details["thumb"], now() if details["found"] else None,
+             kind if kind in ("original", "cover") else "original", ",".join(valid) or None))
 
         disc = bot.get_cog("Discover")
         if disc:
