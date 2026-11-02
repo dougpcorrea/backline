@@ -170,71 +170,74 @@ class ProfilesModal(discord.ui.Modal):
         if not member["verify_code"]:
             await db.execute("UPDATE members SET verify_code=?, verify_tried=0 WHERE user_id=?", (new_code(), uid))
 
-        text, view = await genre_picker(self.bot, uid, lang)
-        await interaction.response.send_message("**Step 2 of 3**\n" + text, view=view, ephemeral=True)
+        text, view = await genre_picker(self.bot, uid, lang, step=True)
+        await interaction.response.send_message(text, view=view, ephemeral=True)
 
 
 MAX_GENRES = 3
 
 
 class GenreView(discord.ui.View):
-    """Um botão por gênero: cada clique liga/desliga na hora (verde = escolhido). "Done" salva."""
+    """Um botão por gênero. Cada clique liga/desliga e já salva no banco (funciona mesmo se o bot reiniciar:
+    os cliques são tratados em Onboarding.on_interaction pelo custom_id). Verde = escolhido."""
 
-    def __init__(self, bot, lang: str, user_id: int, chosen: list[str] | None = None):
-        super().__init__(timeout=900)
+    def __init__(self, bot, lang: str, user_id: int, chosen: list[str] | None = None, step: bool = False):
+        super().__init__(timeout=None)
         self.bot, self.lang, self.user_id = bot, lang, user_id
         self.chosen: list[str] = list(chosen or [])
-        self._build()
-
-    def _build(self) -> None:
-        self.clear_items()
+        self.step = step
         for i, g in enumerate(self.bot.cfg.genres[:20]):
             on = g in self.chosen
-            b = discord.ui.Button(label=g, style=discord.ButtonStyle.success if on else discord.ButtonStyle.secondary,
-                                  emoji="✓" if on else None, row=i // 5)
-            b.callback = self._toggle(g)
-            self.add_item(b)
-        done = discord.ui.Button(label=f"Done ({len(self.chosen)}/{MAX_GENRES})", style=discord.ButtonStyle.primary,
-                                 emoji="💾", disabled=not self.chosen, row=4)
-        done.callback = self.on_done
-        self.add_item(done)
+            self.add_item(discord.ui.Button(
+                label=g, style=discord.ButtonStyle.success if on else discord.ButtonStyle.secondary,
+                emoji="✅" if on else None, row=i // 5, custom_id=f"bl:genre:{i}"))
+        self.add_item(discord.ui.Button(label=f"Done ({len(self.chosen)}/{MAX_GENRES})",
+                                        style=discord.ButtonStyle.primary, emoji="💾", disabled=not self.chosen,
+                                        row=4, custom_id="bl:genre_done"))
 
     def _text(self) -> str:
+        prefix = "**Step 2 of 3**\n" if self.step else ""
         if not self.chosen:
-            return f"🎵 **Pick up to {MAX_GENRES} genres** that describe your music, then press **Done**."
-        return (f"🎵 **Your genres:** {' · '.join(self.chosen)}\n"
+            return prefix + f"🎵 **Pick up to {MAX_GENRES} genres** that describe your music, then press **Done**."
+        return (prefix + f"🎵 **Your genres:** {' · '.join(self.chosen)}\n"
                 f"Tap a genre to add or remove it (up to {MAX_GENRES}), then press **Done**.")
 
-    def _toggle(self, genre: str):
-        async def cb(interaction: discord.Interaction) -> None:
-            if genre in self.chosen:
-                self.chosen.remove(genre)
-            elif len(self.chosen) < MAX_GENRES:
-                self.chosen.append(genre)
-            else:
-                self.chosen = self.chosen[1:] + [genre]   # já tinha 3: troca o mais antigo
-            self._build()
-            await interaction.response.edit_message(content=self._text(), embed=None, view=self)
-        return cb
 
-    async def on_done(self, interaction: discord.Interaction) -> None:
-        db, uid = self.bot.db, self.user_id
-        chosen = list(self.chosen)
-        await db.execute("DELETE FROM member_genres WHERE user_id=?", (uid,))
-        for g in chosen:
-            await db.execute("INSERT INTO member_genres(user_id, genre) VALUES(?,?) ON CONFLICT DO NOTHING", (uid, g))
-        await sync_genre_roles(self.bot, interaction.user, chosen)
+async def _member_genres(bot, uid: int) -> list[str]:
+    return [r["genre"] for r in await bot.db.fetchall("SELECT genre FROM member_genres WHERE user_id=?", (uid,))
+            if r["genre"] in bot.cfg.genres]
 
+
+async def handle_genre_click(bot, interaction: discord.Interaction, custom_id: str) -> None:
+    db, uid = bot.db, interaction.user.id
+    chosen = await _member_genres(bot, uid)
+    step = "Step 2 of 3" in (interaction.message.content or "") if interaction.message else False
+    if custom_id == "bl:genre_done":
+        await sync_genre_roles(bot, interaction.user, chosen)
         pending = [h for h in await db.handles_of(uid) if not h["verified"]]
-        header = ("✅ Genres saved." if not pending else
-                  "**Last step:** prove these profiles are yours.")
-        embed, view = await status_card(self.bot, uid, header)
+        header = ("✅ Genres saved." if not pending else "**Last step:** prove these profiles are yours.")
+        embed, view = await status_card(bot, uid, header)
         await interaction.response.edit_message(content=None, embed=embed, view=view)
+        return
+    idx = int(custom_id.rsplit(":", 1)[1])
+    if idx >= len(bot.cfg.genres):
+        return
+    genre = bot.cfg.genres[idx]
+    if genre in chosen:
+        await db.execute("DELETE FROM member_genres WHERE user_id=? AND genre=?", (uid, genre))
+        chosen.remove(genre)
+    else:
+        if len(chosen) >= MAX_GENRES:   # já tem 3: tira o primeiro para entrar o novo
+            await db.execute("DELETE FROM member_genres WHERE user_id=? AND genre=?", (uid, chosen[0]))
+            chosen = chosen[1:]
+        await db.execute("INSERT INTO member_genres(user_id, genre) VALUES(?,?) ON CONFLICT DO NOTHING", (uid, genre))
+        chosen.append(genre)
+    view = GenreView(bot, "en", uid, chosen, step=step)
+    await interaction.response.edit_message(content=view._text(), embed=None, view=view)
 
 
-async def genre_picker(bot, user_id: int, lang: str = "en") -> tuple[str, "GenreView"]:
-    current = [r["genre"] for r in await bot.db.fetchall("SELECT genre FROM member_genres WHERE user_id=?", (user_id,))]
-    view = GenreView(bot, lang, user_id, [g for g in current if g in bot.cfg.genres])
+async def genre_picker(bot, user_id: int, lang: str = "en", step: bool = False) -> tuple[str, "GenreView"]:
+    view = GenreView(bot, lang, user_id, await _member_genres(bot, user_id), step=step)
     return view._text(), view
 
 
@@ -338,6 +341,19 @@ class Onboarding(commands.Cog):
         self.bot = bot
         bot.add_view(JoinView(bot))
         bot.add_view(StatusView(bot, show_verify=True))
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type != discord.InteractionType.component:
+            return
+        cid = (interaction.data or {}).get("custom_id", "")
+        if cid.startswith("bl:genre:") or cid == "bl:genre_done":
+            if interaction.response.is_done():
+                return
+            try:
+                await handle_genre_click(self.bot, interaction, cid)
+            except Exception as e:  # noqa: BLE001
+                await self.bot.log_admin(f"⚠️ Escolha de gênero falhou: `{str(e)[:200]}`")
 
 
 async def setup(bot):
