@@ -51,7 +51,7 @@ class OneOff(commands.Cog):
             await db.execute(sql, (uid,))
         if not await db.get_member(uid):
             await db.upsert_member(uid, "en")
-        await db.execute("UPDATE members SET verified_at=NULL, verify_code=NULL, manual_level=NULL, is_test=1 "
+        await db.execute("UPDATE members SET verified_at=NULL, verify_code=NULL, manual_level=NULL, verify_tried=0, is_test=1 "
                          "WHERE user_id=?", (uid,))
         member = guild.get_member(uid) if guild else None
         if member:

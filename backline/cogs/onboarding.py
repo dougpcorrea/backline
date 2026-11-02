@@ -71,6 +71,8 @@ async def status_card(bot, user_id: int, header: str | None = None) -> tuple[dis
     genres = [r["genre"] for r in await db.fetchall("SELECT genre FROM member_genres WHERE user_id=?", (user_id,))]
     pending = [h for h in handles if not h["verified"]]
     verified_any = any(h["verified"] for h in handles)
+    tried = bool(member and member["verify_tried"])
+    verb = "Verify again" if tried else "Verify"
 
     lines = []
     for h in handles:
@@ -79,23 +81,23 @@ async def status_card(bot, user_id: int, header: str | None = None) -> tuple[dis
     desc = (header + "\n\n" if header else "") + ("\n".join(lines) or "No profiles yet.")
     if pending and member and member["verify_code"]:
         desc += (f"\n\n**To verify the ⏳ profiles:** add this code anywhere in their bio, save, "
-                 f"then click **Verify again**:\n# `{member['verify_code']}`")
+                 f"then click **{verb}**:\n# `{member['verify_code']}`")
     elif verified_any:
         desc += "\n\nYou can remove the code from your bios."
     colour = 0x30A46C if not pending else (0xC9A227 if verified_any else 0xE5484D)
     embed = discord.Embed(title="👤 Your Backline profiles", description=desc, colour=colour)
     embed.add_field(name="Genres", value=" · ".join(genres) or "—", inline=False)
     embed.set_footer(text="Member ✅" if member and member["verified_at"] else "Not a member yet — verify at least one profile")
-    return embed, StatusView(bot, show_verify=bool(pending))
+    return embed, StatusView(bot, show_verify=bool(pending), verify_label=verb)
 
 
 class StatusView(discord.ui.View):
-    def __init__(self, bot, show_verify: bool = True):
+    def __init__(self, bot, show_verify: bool = True, verify_label: str = "Verify"):
         super().__init__(timeout=None)
         self.bot = bot
         if show_verify:
-            v = discord.ui.Button(label="Verify again", style=discord.ButtonStyle.primary, emoji="🔄",
-                                  custom_id="bl:verify")
+            v = discord.ui.Button(label=verify_label, style=discord.ButtonStyle.primary,
+                                  emoji="🔄" if verify_label != "Verify" else "✅", custom_id="bl:verify")
             v.callback = self.on_verify
             self.add_item(v)
         u = discord.ui.Button(label="Update profiles", style=discord.ButtonStyle.secondary, emoji="✏️",
@@ -166,7 +168,7 @@ class ProfilesModal(discord.ui.Modal):
 
         member = await db.get_member(uid)
         if not member["verify_code"]:
-            await db.execute("UPDATE members SET verify_code=? WHERE user_id=?", (new_code(), uid))
+            await db.execute("UPDATE members SET verify_code=?, verify_tried=0 WHERE user_id=?", (new_code(), uid))
 
         await interaction.response.send_message(t("genre_prompt", lang), view=GenreView(self.bot, lang, uid),
                                                 ephemeral=True)
@@ -194,7 +196,7 @@ class GenreView(discord.ui.View):
 
         pending = [h for h in await db.handles_of(uid) if not h["verified"]]
         header = ("✅ Genres saved." if not pending else
-                  "**Last step:** put the code below in the bio of each ⏳ profile, then click **Verify again**.")
+                  "**Last step:** prove these profiles are yours.")
         embed, view = await status_card(self.bot, uid, header)
         await interaction.response.edit_message(content=None, embed=embed, view=view)
 
@@ -232,6 +234,7 @@ async def run_verification(bot, interaction: discord.Interaction) -> None:
     await interaction.response.send_message("🔎 Checking your bios… this can take up to a minute.", ephemeral=True)
 
     code = member["verify_code"].upper()
+    await db.execute("UPDATE members SET verify_tried=1 WHERE user_id=?", (uid,))
     ok, missing, failed = [], [], []
     # contas TESTER (is_test=1, sem demo_name): perfis fictícios valem sem código na bio
     tester = bool(member["is_test"]) and not member["demo_name"]

@@ -167,6 +167,7 @@ MIGRATIONS = [
     "ALTER TABLE posts ADD COLUMN meta_at BIGINT",
     "ALTER TABLE members ADD COLUMN demo_name TEXT",
     "ALTER TABLE posts ADD COLUMN cover_path TEXT",
+    "ALTER TABLE members ADD COLUMN verify_tried INTEGER DEFAULT 0",
 ]
 
 
