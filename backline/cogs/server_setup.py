@@ -20,7 +20,7 @@ MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "7"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "8"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -73,9 +73,9 @@ class ServerSetup(commands.Cog):
         if role is None:
             role = await guild.create_role(name=name, colour=discord.Colour(color), hoist=hoist,
                                            mentionable=False, reason="Backline setup")
-        elif role.name != name or role.colour.value != color:
+        elif role.name != name or role.colour.value != color or role.hoist != hoist:
             try:
-                await role.edit(name=name, colour=discord.Colour(color), reason="Backline setup")
+                await role.edit(name=name, colour=discord.Colour(color), hoist=hoist, reason="Backline setup")
             except discord.HTTPException:
                 pass
         await db.set_setting(f"role_{key}", role.id)
@@ -231,7 +231,7 @@ class ServerSetup(commands.Cog):
             member_role = await self._role(guild, "member", MEMBER_ROLE)
             recruiter_role = await self._role(guild, "recruiter", RECRUITER_ROLE, 0xC9A227)
             await self._role(guild, "mutual", MUTUAL_ROLE)
-            level_roles = [await self._role(guild, f"level_{n}", level_role_name(n), level_color(n), hoist=True)
+            level_roles = [await self._role(guild, f"level_{n}", level_role_name(n), level_color(n), hoist=False)
                            for n in range(1, 11)]
 
             # Ordem: níveis no topo (a cor do nome vem deles), depois divulgador, membro, gêneros.
@@ -285,20 +285,11 @@ class ServerSetup(commands.Cog):
                     await vc.edit(name=name, category=vcat, overwrites=vow, reason="Backline setup")
                 await self.bot.db.set_setting(f"vc_{i}", vc.id)
 
-            # canal de voz do Discover: abre a Activity em tela cheia, sem chat; ninguém fala
-            dow = {guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                   member_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=False,
-                                                            stream=False, use_embedded_activities=True),
-                   guild.me: discord.PermissionOverwrite(view_channel=True, connect=True)}
+            # o canal de voz do Discover foi testado e removido
             did = await self.bot.db.get_int_setting("vc_discover")
-            dvc = guild.get_channel(did) if did else None
-            dvc = dvc or discord.utils.get(guild.voice_channels, name=DISCOVER_VOICE)
-            if dvc is None:
-                dvc = await guild.create_voice_channel(DISCOVER_VOICE, category=vcat, overwrites=dow, position=0,
-                                                       reason="Backline setup")
-            else:
-                await dvc.edit(name=DISCOVER_VOICE, category=vcat, overwrites=dow, reason="Backline setup")
-            await self.bot.db.set_setting("vc_discover", dvc.id)
+            if did and guild.get_channel(did):
+                await guild.get_channel(did).delete(reason="Backline: voice Discover removed")
+            await self.bot.db.execute("DELETE FROM settings WHERE key='vc_discover'")
 
             # O Discord mostra o card "Welcome to <server> / brand new, shiny server" no
             # canal de mensagens do sistema. Manda ele (e os avisos de entrada) pro canal admin.

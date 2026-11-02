@@ -142,7 +142,7 @@ async def posts_in_last_week(db: Database, user_id: int) -> list:
 
 
 # ======================= Mutual Follow =======================
-MUTUAL_PLATFORMS = ("instagram", "tiktok", "youtube")
+MUTUAL_PLATFORMS = ("instagram", "youtube")
 
 
 @dataclass

@@ -290,7 +290,8 @@ class Database:
         return await self.fetchone("SELECT * FROM members WHERE user_id=?", (user_id,))
 
     async def handles_of(self, user_id: int) -> list[Mapping]:
-        return await self.fetchall("SELECT * FROM handles WHERE user_id=? ORDER BY platform", (user_id,))
+        return await self.fetchall("SELECT * FROM handles WHERE user_id=? AND platform IN ('instagram','youtube') "
+                                   "ORDER BY platform", (user_id,))
 
     async def handle_owner(self, platform: str, handle: str) -> int | None:
         row = await self.fetchone(

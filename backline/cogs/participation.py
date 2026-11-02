@@ -98,7 +98,11 @@ class Participation(commands.Cog):
     async def _recalc(self) -> int:
         cfg = self.bot.cfg
         scores = await compute_scores(self.bot.db, cfg.window_days, cfg.min_activity, cfg.target_ratio)
-        levels = {uid: s.level for uid, s in scores.items()}
+        # só tem cargo de ranking quem já participou: comentou em alguém ou publicou algo
+        posters = {r["user_id"] for r in await self.bot.db.fetchall(
+            "SELECT DISTINCT user_id FROM posts WHERE removed = 0")}
+        levels: dict[int, int | None] = {
+            uid: (s.level if (s.given > 0 or uid in posters) else None) for uid, s in scores.items()}
         for r in await self.bot.db.fetchall("SELECT user_id, manual_level FROM members "
                                             "WHERE manual_level IS NOT NULL AND left_at IS NULL"):
             levels[r["user_id"]] = r["manual_level"]
@@ -107,7 +111,7 @@ class Participation(commands.Cog):
         await self.update_ranking_message()
         return changed
 
-    async def sync_level_roles(self, levels: dict[int, int]) -> int:
+    async def sync_level_roles(self, levels: dict[int, int | None]) -> int:
         guild = self.bot.guild
         if not guild:
             return 0
@@ -119,12 +123,12 @@ class Participation(commands.Cog):
             member = guild.get_member(uid)
             if not member:
                 continue
-            want = roles[level]
+            want = roles[level] if level else None   # None = ainda sem participação: nenhum cargo de nível
             wrong = [r for n, r in roles.items() if n != level and r in member.roles]
             try:
                 if wrong:
                     await member.remove_roles(*wrong, reason="Backline level")
-                if want not in member.roles:
+                if want and want not in member.roles:
                     await member.add_roles(want, reason="Backline level")
                     changed += 1
             except discord.HTTPException as e:

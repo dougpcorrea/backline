@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlparse
 
-PLATFORMS = ("instagram", "tiktok", "youtube")
+PLATFORMS = ("instagram", "youtube")   # TikTok desligado: não dá pra conferir comentários lá
 PLATFORM_EMOJI = {"instagram": "📸", "tiktok": "🎵", "youtube": "▶️"}
 PLATFORM_NAME = {"instagram": "Instagram", "tiktok": "TikTok", "youtube": "YouTube"}
 

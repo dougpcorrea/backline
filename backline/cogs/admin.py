@@ -21,7 +21,7 @@ from discord.ext import commands, tasks
 from ..db import now
 from ..links import PLATFORM_NAME
 
-Platform = Literal["instagram", "tiktok", "youtube"]
+Platform = Literal["instagram", "youtube"]
 
 
 class WelcomeModal(discord.ui.Modal, title="Texto do #start-here"):

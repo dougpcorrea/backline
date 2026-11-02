@@ -32,12 +32,12 @@ STRINGS.update({
         "en": "Optional. Join to follow other artists and get followed back.\n"
               "• **Who to follow** shows profiles (people who already follow you come first).\n"
               "• After following, mark them in the menu — the bot checks it "
-              "(YouTube: needs public subscriptions; Instagram/TikTok: public profile).\n"
+              "(YouTube: needs public subscriptions; Instagram: public profile).\n"
               "• When someone follows you, you get a DM to follow back.",
         "pt": "Opcional. Participe pra seguir outros artistas e ser seguido de volta.\n"
               "• **Quem seguir** mostra perfis (quem já te segue aparece primeiro).\n"
               "• Depois de seguir, marque no menu — o bot confere "
-              "(YouTube: inscrições públicas; Instagram/TikTok: perfil público).\n"
+              "(YouTube: inscrições públicas; Instagram: perfil público).\n"
               "• Quando alguém te segue, você recebe uma mensagem pra seguir de volta.",
     },
     "mf_btn_toggle": {"en": "Join / Leave", "pt": "Entrar / Sair"},

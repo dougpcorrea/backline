@@ -326,9 +326,6 @@ async def grant_member_roles(bot, user: discord.abc.User) -> None:
     if not member:
         return
     roles = [r for r in [await bot.role("member")] if r and r not in member.roles]
-    level_roles = [await bot.role(f"level_{n}") for n in range(1, 11)]
-    if not any(r and r in member.roles for r in level_roles) and level_roles[0]:
-        roles.append(level_roles[0])
     if roles:
         try:
             await member.add_roles(*roles, reason="Backline verified")

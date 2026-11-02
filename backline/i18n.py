@@ -15,7 +15,7 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "panel_desc": {
         "en": "A community of independent artists who discover, support and grow together.\n\n"
-              "🎸 **Join** — tell us your Instagram, TikTok and/or YouTube and verify them with a code in your bio.\n"
+              "🎸 **Join** — tell us your Instagram and/or YouTube and verify them with a code in your bio.\n"
               "👤 **My profiles** — see your verification status, update your profiles or genres.",
         "pt": "Uma comunidade de artistas independentes que se descobrem, se apoiam e crescem juntos.\n"
               "Clique no botão abaixo, informe seus perfis e confirme com um código na bio.",
@@ -79,10 +79,10 @@ STRINGS: dict[str, dict[str, str]] = {
     # ---------- feed ----------
     "post_panel_title": {"en": "📤 Share your work", "pt": "📤 Publique seu trabalho"},
     "post_panel_desc": {
-        "en": "Paste the link of your new Instagram, TikTok or YouTube post. It enters Discover, "
+        "en": "Paste the link of your new Instagram or YouTube post. It enters Discover, "
               "where members find it, and the comments they leave on it count for everyone's participation.\n\n"
               "Limit: {n} post(s) every 7 days.",
-        "pt": "Cole o link da sua nova publicação no Instagram, TikTok ou YouTube. Ela entra no Discover, "
+        "pt": "Cole o link da sua nova publicação no Instagram ou YouTube. Ela entra no Discover, "
               "e os comentários que os membros deixarem lá contam pra participação de todos.\n"
               "Limite: {n} publicação(ões) a cada 7 dias.",
     },
@@ -94,8 +94,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "pt": "Verifique seus perfis primeiro em {channel}.",
     },
     "err_bad_link": {
-        "en": "I couldn't recognize that link. Use the link of a post on Instagram, TikTok or YouTube.",
-        "pt": "Não reconheci esse link. Use o link de uma publicação do Instagram, TikTok ou YouTube.",
+        "en": "I couldn't recognize that link. Use the link of a post on Instagram or YouTube.",
+        "pt": "Não reconheci esse link. Use o link de uma publicação do Instagram ou YouTube.",
     },
     "err_platform_not_verified": {
         "en": "Your {platform} profile isn't verified yet. Update your profiles in {channel}.",

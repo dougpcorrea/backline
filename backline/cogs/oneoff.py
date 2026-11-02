@@ -27,6 +27,7 @@ class OneOff(commands.Cog):
             await self.reset_testers()
             await self.seed_posts()
             await self.refetch_instagram_meta()
+            await self.drop_tiktok()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -63,6 +64,36 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def drop_tiktok(self) -> None:
+        """TikTok saiu da plataforma (não dá pra conferir comentários lá)."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_drop_tiktok_v1"):
+            return
+        await db.set_setting("oneoff_drop_tiktok_v1", "1")
+        await db.execute("DELETE FROM handles WHERE platform='tiktok'")
+        await db.execute("DELETE FROM follows WHERE platform='tiktok'")
+        await db.execute("UPDATE posts SET removed=1 WHERE platform='tiktok' AND external_id NOT LIKE 'demo-%'")
+        await db.execute("UPDATE posts SET platform='youtube' WHERE platform='tiktok' AND external_id LIKE 'demo-%'")
+        text = await db.get_setting("welcome_text")
+        if text:
+            for a, b in (("Instagram, TikTok, and/or YouTube", "Instagram and/or YouTube"),
+                         ("Instagram, TikTok and/or YouTube", "Instagram and/or YouTube"),
+                         ("across Instagram, TikTok, and YouTube", "on Instagram and YouTube"),
+                         ("Instagram, TikTok, and YouTube", "Instagram and YouTube"),
+                         ("Instagram, TikTok and YouTube", "Instagram and YouTube")):
+                text = text.replace(a, b)
+            await db.set_setting("welcome_text", text)
+        setup = self.bot.get_cog("ServerSetup")
+        if setup and self.bot.guild:
+            await setup.refresh_welcome(self.bot.guild)
+        part = self.bot.get_cog("Participation")
+        if part:
+            await part._recalc()
+        disc = self.bot.get_cog("Discover")
+        if disc:
+            await disc.publish_data()
+        await self.bot.log_admin("🧹 TikTok removido: perfis e publicações do TikTok saíram; textos atualizados.")
 
     async def refetch_instagram_meta(self) -> None:
         """Posts do Instagram cadastrados antes da busca de capa/título: buscar agora."""

@@ -19,7 +19,7 @@ Take the time to genuinely appreciate their work: watch their videos, listen unt
 There's no fixed queue or assigned groups. Explore freely, discover new music, and build genuine connections.
 
 ### 🏆 02 — Your Reputation
-Backline uses an automated system to track verifiable interactions between registered artists across Instagram, TikTok, and YouTube.
+Backline uses an automated system to track verifiable interactions between registered artists on Instagram and YouTube.
 
 Your participation contributes to a 10-level reputation system, making it easier for other members to recognize artists who actively support the community. The more consistently you participate, the stronger your reputation becomes.
 
@@ -36,7 +36,7 @@ Our internal artist evaluation system helps identify musical styles, experience 
 -# Artist ratings and recommendation features will be introduced as they become available.
 
 ### 🚀 05 — Get Started
-🎸 **Join** — Register your Instagram, TikTok, and/or YouTube accounts and verify ownership using a temporary code in your bio.
+🎸 **Join** — Register your Instagram and/or YouTube accounts and verify ownership using a temporary code in your bio.
 👤 **My Profiles** — View your verification status, update your social accounts, or manage your musical genres.
 
 Once verified, introduce yourself, share your music, and start discovering other artists.

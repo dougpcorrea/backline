@@ -44,7 +44,7 @@ class PostModal(discord.ui.Modal):
         mg = set(member_genres or [])
         self.genres = discord.ui.Select(placeholder="Pick 1–3 genres", min_values=1, max_values=3, options=[
             discord.SelectOption(label=g, value=g, default=g in mg) for g in bot.cfg.genres[:25]])
-        self.add_item(discord.ui.Label(text="Post link", description="Instagram, TikTok or YouTube",
+        self.add_item(discord.ui.Label(text="Post link", description="Instagram or YouTube",
                                        component=self.link))
         self.add_item(discord.ui.Label(text="Title (optional)", component=self.title_in))
         self.add_item(discord.ui.Label(text="Original or cover?", component=self.kind))
@@ -86,8 +86,10 @@ class Feed(commands.Cog):
             url = await bot.collectors.resolve_redirect(url if "://" in url else "https://" + url)
         link = parse_post_url(url)
         if not link:
-            return ("❌ That doesn't look like a post link. Paste the link of a specific **Instagram post/reel**, "
-                    "**TikTok video** or **YouTube video/short** — not a profile or channel link.")
+            return ("❌ That doesn't look like a post link. Paste the link of a specific **Instagram post/reel** "
+                    "or **YouTube video/short** — not a profile or channel link.")
+        if link.platform not in ("instagram", "youtube"):
+            return "❌ Backline works with **Instagram** and **YouTube** posts only."
         tester = bool(member["is_test"]) and not member["demo_name"]
 
         handle = await db.fetchone("SELECT * FROM handles WHERE user_id=? AND platform=? AND verified=1",
