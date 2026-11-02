@@ -20,7 +20,7 @@ MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "6"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "7"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -29,10 +29,21 @@ COLLAB_TAGS = ["Vocals", "Production", "Instrumental", "Songwriting", "Mixing / 
 COLLAB_GUIDE = ("Propose a collaboration: one post per idea. Say what you're making, what you need "
                 "(vocals, production, mixing…), your genre, links to your work and how you'd like to split credits.")
 DISCOVER_VOICE = "🎧 Discover"
+RULES_TEXT = (
+    "**1. Be genuine.** Real listens, real comments. No spam, no copy-paste comments, no fake engagement.\n\n"
+    "**2. Give before you ask.** Support other artists' work — that's what keeps everyone growing.\n\n"
+    "**3. Respect everyone.** No harassment, hate speech or discrimination of any kind.\n\n"
+    "**4. Share your own work only.** Post music you created or performed, through the post channel.\n\n"
+    "**5. No self-promo outside the system.** No DMs advertising, no links dropped in chats.\n\n"
+    "**6. Keep it safe for all.** No NSFW content, scams or suspicious links.\n\n"
+    "-# Breaking the rules can lead to losing your level, your access, or a ban. "
+    "Questions? Open a private ticket in suggestions.")
 VOICE_ROOMS = ["🎙️ Room 1", "🎙️ Room 2", "🎙️ Room 3"]
 
 # chave, nome, visível para (everyone | member | recruiter | admin), membros podem escrever?, categoria
 CHANNELS = [
+    # o Discord mostra o bloco "brand new server / missões" no 1º canal da lista: o #rules absorve isso
+    ("rules", "📌・rules", "everyone", False, "main"),
     ("start", "👋・start-here", "everyone", False, "main"),
     ("post", "📤・post-here", "member", False, "main"),
     ("discover", "🧭・discover", "member", False, "main"),
@@ -298,6 +309,15 @@ class ServerSetup(commands.Cog):
                     pass
 
             # ---- painéis ----
+            # ordem fixa dentro de cada categoria (o #rules sempre no topo)
+            for pos, (key, *_rest) in enumerate(CHANNELS):
+                try:
+                    if chans[key].position != pos:
+                        await chans[key].edit(position=pos, reason="Backline setup")
+                except discord.HTTPException:
+                    pass
+            rules = discord.Embed(title="📌 Backline Rules", colour=0x30A46C, description=RULES_TEXT)
+            await self._panel("rules", chans["rules"], rules, discord.ui.View())
             await self.refresh_welcome(guild)
             await self._panel("suggestions", chans["suggestions"], suggestions_embed(), SuggestionsView(self.bot))
             post = discord.Embed(title=t('post_panel_title', 'en'),
