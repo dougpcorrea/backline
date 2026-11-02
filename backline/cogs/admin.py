@@ -24,6 +24,30 @@ from ..links import PLATFORM_NAME
 Platform = Literal["instagram", "tiktok", "youtube"]
 
 
+class WelcomeModal(discord.ui.Modal, title="Texto do #start-here"):
+    def __init__(self, bot, current: str):
+        super().__init__(timeout=1800)
+        self.bot = bot
+        self.text = discord.ui.TextInput(
+            label="Markdown · {post} {discover} {mutual} = canais",
+            style=discord.TextStyle.paragraph, default=current[:4000], max_length=4000, required=False)
+        self.add_item(self.text)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        value = self.text.value.strip()
+        if value:
+            await self.bot.db.set_setting("welcome_text", value)
+            note = "✅ Texto do #start-here atualizado."
+        else:
+            await self.bot.db.execute("DELETE FROM settings WHERE key='welcome_text'")
+            note = "↩️ Campo vazio: voltei para o texto padrão."
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        setup = self.bot.get_cog("ServerSetup")
+        if setup and interaction.guild:
+            await setup.refresh_welcome(interaction.guild)
+        await interaction.followup.send(note, ephemeral=True)
+
+
 class Admin(commands.Cog):
     admin = app_commands.Group(name="admin", description="Backline admin",
                                default_permissions=discord.Permissions(administrator=True), guild_only=True)
@@ -333,6 +357,12 @@ class Admin(commands.Cog):
     @auto_update.before_loop
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
+
+    @admin.command(name="welcome", description="Editar o texto do #start-here")
+    async def welcome(self, interaction: discord.Interaction) -> None:
+        from ..welcome import DEFAULT_TEXT
+        current = await self.bot.db.get_setting("welcome_text") or DEFAULT_TEXT
+        await interaction.response.send_modal(WelcomeModal(self.bot, current))
 
     @admin.command(name="unverify", description="Tirar a verificação de um perfil")
     async def unverify(self, interaction: discord.Interaction, member: discord.Member, platform: Platform) -> None:

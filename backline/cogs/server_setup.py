@@ -20,7 +20,7 @@ MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "4"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "5"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -100,6 +100,18 @@ class ServerSetup(commands.Cog):
             await ch.edit(category=category, overwrites=ow, reason="Backline setup")
         await db.set_setting(f"ch_{key}", ch.id)
         return ch
+
+    async def refresh_welcome(self, guild: discord.Guild) -> None:
+        """Redesenha o painel do #start-here com o texto salvo (/admin welcome) ou o padrão."""
+        chans = {k: await self.bot.channel(k) for k in ("start", "post", "discover", "mutual")}
+        if not chans["start"]:
+            return
+        jump = lambda ch: f"https://discord.com/channels/{guild.id}/{ch.id}"  # noqa: E731
+        mentions = {k: c.mention for k, c in chans.items() if c and k != "start"}
+        embed = build_welcome(mentions, await self.bot.db.get_setting("welcome_text"))
+        links = [(label, emoji, jump(chans[k])) for label, emoji, k in
+                 (("Discover", "🧭", "discover"), ("Post your music", "📤", "post")) if chans[k]]
+        await self._panel("join", chans["start"], embed, JoinView(self.bot, links))
 
     async def _collab_forum(self, guild, category, member_role):
         """Fórum de propostas de colaboração (cada proposta vira um post com tags)."""
@@ -270,10 +282,7 @@ class ServerSetup(commands.Cog):
                     pass
 
             # ---- painéis ----
-            jump = lambda ch: f"https://discord.com/channels/{guild.id}/{ch.id}"  # noqa: E731
-            welcome = build_welcome({k: chans[k].mention for k in ("post", "discover", "mutual")})
-            links = [("Discover", "🧭", jump(chans["discover"])), ("Post your music", "📤", jump(chans["post"]))]
-            await self._panel("join", chans["start"], welcome, JoinView(self.bot, links))
+            await self.refresh_welcome(guild)
             await self._panel("suggestions", chans["suggestions"], suggestions_embed(), SuggestionsView(self.bot))
             post = discord.Embed(title=t('post_panel_title', 'en'),
                                  description=bi("post_panel_desc", n=cfg.posts_per_week), colour=0x5865F2)
