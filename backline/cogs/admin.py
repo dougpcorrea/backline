@@ -20,6 +20,7 @@ from discord.ext import commands, tasks
 
 from ..db import now
 from ..links import PLATFORM_NAME
+from ..services import post_member_commenters
 
 Platform = Literal["instagram", "youtube"]
 
@@ -109,17 +110,27 @@ class Admin(commands.Cog):
         if post_id:
             posts = await db.fetchall("SELECT * FROM posts WHERE id=? AND removed=0", (post_id,))
         else:
-            posts = await db.fetchall("SELECT * FROM posts WHERE removed=0 AND created_at>=?",
-                                      (now() - 7 * 86400,))
+            posts = await db.fetchall("SELECT * FROM posts WHERE removed=0 AND created_at>=? "
+                                      "AND external_id NOT LIKE 'demo-%'", (now() - 7 * 86400,))
         if not posts:
-            await interaction.followup.send("Nenhuma publicação encontrada.", ephemeral=True)
+            await interaction.followup.send("Nenhuma publicação real encontrada.", ephemeral=True)
             return
-        found = 0
+        lines, found = [], 0
         for p in posts:
-            found += await self.part.collect_post(p, advance_checkpoint=False)
+            new = await self.part.collect_post(p, advance_checkpoint=False)
+            found += new
+            authors = [r["author_handle"] for r in await db.fetchall(
+                "SELECT DISTINCT author_handle FROM comments WHERE post_id=? AND author_handle IS NOT NULL",
+                (p["id"],))]
+            members = await post_member_commenters(db, p["id"])
+            who = ", ".join(f"@{a}" for a in authors[:12]) + (f" +{len(authors) - 12}" if len(authors) > 12 else "")
+            lines.append(f"**#{p['id']}** {p['platform']} · <@{p['user_id']}> — {len(authors)} pessoa(s) comentaram, "
+                         f"{len(members)} membro(s)\n-# {who or 'nenhum comentário lido'}")
         await self.part.recalc()
         await interaction.followup.send(
-            f"✅ {len(posts)} publicação(ões) coletada(s). {found} novo(s) comentário(s) de membros.", ephemeral=True)
+            f"✅ {len(posts)} publicação(ões) lida(s). {found} comentário(s) novo(s) de membros.\n\n" + "\n".join(lines)
+            + "\n\n-# Comentário só conta se o @ que comentou for um perfil **verificado** de outro membro.",
+            ephemeral=True)
 
     @admin.command(name="remove-post", description="Remover uma publicação do feed e do cálculo")
     async def remove_post(self, interaction: discord.Interaction, post_id: int) -> None:
