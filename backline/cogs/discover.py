@@ -7,72 +7,102 @@ troca sozinha pelas próximas 6. A seleção fica guardada: fechar e voltar não
 from __future__ import annotations
 
 import asyncio
+import io
 import random
 from collections import OrderedDict
 
 import aiohttp
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from ..db import now
 from ..discover import DAY, NEW_ARTIST_DAYS, Candidate, Viewer, pick
-from ..grid import Tile, render
+from ..grid import Tile, _placeholder
 from ..links import PLATFORM_EMOJI, PLATFORM_NAME
 
 BATCH = 6
 POOL_DAYS = 90          # publicações mais antigas que isso saem do Discover
 META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velhas
+PUBLIC_REFRESH_HOURS = 3
 ACCENT = 0x5865F2
 
 
-def panel_embed() -> discord.Embed:
-    return discord.Embed(
-        title="🧭 Discover",
-        description=("Find your next favorite independent artist.\n\n"
-                     "Press **Discover** to get **6 tracks picked for you** from the community — "
-                     "based on the genres you like, what's new, and the artists who support others the most.\n\n"
-                     "Open all 6 and the next 6 unlock automatically."),
-        colour=ACCENT)
+def _md(text: str) -> str:
+    return discord.utils.escape_markdown(text).replace("[", "(").replace("]", ")")
 
 
-class DiscoverPanelView(discord.ui.View):
-    def __init__(self, bot):
+def build_layout(tiles: list[Tile], posts: list[dict], header: str, button: discord.ui.Button,
+                 view: discord.ui.LayoutView) -> list[discord.File]:
+    """Monta no view: texto do topo, galeria de capas, lista com títulos clicáveis e o botão."""
+    files: list[discord.File] = []
+    items = []
+    for t, p in zip(tiles, posts):
+        if p.get("thumb_url"):
+            items.append(discord.MediaGalleryItem(p["thumb_url"], description=t.title[:100]))
+        else:   # Instagram não tem capa pública: arte padrão gerada aqui
+            buf = io.BytesIO()
+            _placeholder(t.platform).save(buf, "PNG")
+            buf.seek(0)
+            name = f"cover_{t.number}.png"
+            files.append(discord.File(buf, filename=name))
+            items.append(discord.MediaGalleryItem(f"attachment://{name}", description=t.title[:100]))
+    lines = []
+    for t, p in zip(tiles, posts):
+        dot = "🟡" if t.badge.lower().startswith("new") else "🟢"
+        lines.append(f"**{t.number} · [{_md(t.title)}]({p['url']})**\n"
+                     f"{_md(t.artist)} · {t.genre} · {dot} {t.badge}")
+    container = discord.ui.Container(
+        discord.ui.TextDisplay(header),
+        discord.ui.MediaGallery(*items),
+        discord.ui.TextDisplay("\n\n".join(lines)),
+        discord.ui.Separator(),
+        discord.ui.ActionRow(button),
+        accent_colour=ACCENT)
+    view.add_item(container)
+    return files
+
+
+class PublicView(discord.ui.LayoutView):
+    """Botão "Picks for you" da grade pública (persistente)."""
+
+    def __init__(self, bot, cog=None):
         super().__init__(timeout=None)
         self.bot = bot
-        b = discord.ui.Button(label="Discover", emoji="🎧", style=discord.ButtonStyle.primary, custom_id="bl:discover")
-        b.callback = self.on_discover
-        self.add_item(b)
+        self.button = discord.ui.Button(label="Picks for you", emoji="🎧", style=discord.ButtonStyle.primary,
+                                        custom_id="bl:discover")
+        self.button.callback = self.on_click
 
-    async def on_discover(self, interaction: discord.Interaction) -> None:
+    async def on_click(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
-        embed, file, view = await self.bot.get_cog("Discover").screen(interaction.user.id)
-        kwargs = {"file": file} if file else {}
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True, **kwargs)
+        view, files = await self.bot.get_cog("Discover").personal(interaction.user.id)
+        await interaction.followup.send(view=view, files=files, ephemeral=True)
 
 
-class GridView(discord.ui.View):
-    def __init__(self, cog: "Discover", user_id: int, posts: list[dict], opened: set[int]):
+class PersonalView(discord.ui.LayoutView):
+    def __init__(self, cog: "Discover", user_id: int):
         super().__init__(timeout=3600)
         self.cog, self.user_id = cog, user_id
-        for i, p in enumerate(posts, start=1):
-            done = p["id"] in opened
-            btn = discord.ui.Button(label=str(i), emoji="✅" if done else PLATFORM_EMOJI[p["platform"]],
-                                    style=discord.ButtonStyle.success if done else discord.ButtonStyle.secondary,
-                                    row=(i - 1) // 3)
-            btn.callback = self._make_cb(p)
-            self.add_item(btn)
+        self.button = discord.ui.Button(label="New picks", emoji="🔄", style=discord.ButtonStyle.primary)
+        self.button.callback = self.on_new
 
-    def _make_cb(self, post: dict):
-        async def cb(interaction: discord.Interaction) -> None:
-            await self.cog.open_track(interaction, self.user_id, post)
-        return cb
+    async def on_new(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        await self.cog._new_batch(self.user_id)
+        view, files = await self.cog.personal(self.user_id)
+        await interaction.edit_original_response(view=view, attachments=files)
 
 
 class Discover(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._covers: OrderedDict[str, bytes | None] = OrderedDict()
-        bot.add_view(DiscoverPanelView(bot))
+        skeleton = PublicView(bot)
+        skeleton.add_item(discord.ui.ActionRow(skeleton.button))
+        bot.add_view(skeleton)
+        self.public_loop.start()
+
+    def cog_unload(self) -> None:
+        self.public_loop.cancel()
 
     async def _avg_received(self, user_id: int) -> float | None:
         row = await self.bot.db.fetchone(
@@ -135,21 +165,17 @@ class Discover(commands.Cog):
                                  [(user_id, i, t) for i in ids])
         return ids
 
-    async def _current(self, user_id: int) -> tuple[list[dict], set[int]]:
-        """Seleção atual (posts ainda válidos) e quais já foram abertos. Sorteia nova se acabou."""
+    async def _current(self, user_id: int) -> list[dict]:
+        """Seleção pessoal atual (sorteia uma nova se não existir ou se esvaziou)."""
         db = self.bot.db
-        row = await db.fetchone("SELECT post_ids, created_at FROM discover_batch WHERE user_id=?", (user_id,))
+        row = await db.fetchone("SELECT post_ids FROM discover_batch WHERE user_id=?", (user_id,))
         ids = [int(x) for x in row["post_ids"].split(",") if x] if row else []
         posts = [dict(r) for r in [await db.fetchone("SELECT * FROM posts WHERE id=? AND removed=0", (i,))
                                    for i in ids] if r]
-        opened = {r["post_id"] for r in await db.fetchall(
-            "SELECT post_id FROM discover_clicks WHERE user_id=? AND clicked_at >= ?",
-            (user_id, row["created_at"] if row else 0))}
-        if not posts or all(p["id"] in opened for p in posts):
+        if len(posts) < min(BATCH, len(ids) or BATCH) or not posts:
             ids = await self._new_batch(user_id)
             posts = [dict(await db.fetchone("SELECT * FROM posts WHERE id=?", (i,))) for i in ids]
-            opened = set()
-        return posts, opened
+        return posts
 
     async def _cover(self, url: str | None) -> bytes | None:
         if not url:
@@ -189,43 +215,81 @@ class Discover(commands.Cog):
                     badge="New artist" if new else f"Level {level}", platform=post["platform"],
                     cover=await self._cover(post.get("thumb_url")), opened=opened)
 
-    async def screen(self, user_id: int) -> tuple[discord.Embed, discord.File | None, discord.ui.View]:
-        posts, opened = await self._current(user_id)
-        if not posts:
-            embed = discord.Embed(title="🧭 Discover", colour=ACCENT,
-                                  description="Nothing to discover yet — new tracks are on the way. Check back soon!")
-            return embed, None, discord.ui.View()
-        tiles = await asyncio.gather(*(self._tile(i, p, p["id"] in opened) for i, p in enumerate(posts, start=1)))
-        png = await asyncio.get_running_loop().run_in_executor(None, render, list(tiles))
-        n_open = sum(1 for p in posts if p["id"] in opened)
-        embed = discord.Embed(
-            title="🧭 Discover",
-            description=(f"**{len(posts)} tracks picked for you** from the Backline community.\n\n"
-                         "**How it works**\n"
-                         "Tap a number below to open that track — it's marked as opened.\n"
-                         f"Open all {len(posts)} and your **next {BATCH} unlock automatically**.\n\n"
-                         f"Progress: **{n_open}/{len(posts)}** opened"),
-            colour=ACCENT)
-        embed.set_image(url="attachment://discover.png")
-        file = discord.File(__import__("io").BytesIO(png), filename="discover.png")
-        return embed, file, GridView(self, user_id, posts, opened)
+    async def _tiles(self, posts: list[dict]) -> list[Tile]:
+        posts[:] = [await self._ensure_meta(p) for p in posts]
+        return list(await asyncio.gather(*(self._tile(i, p, False) for i, p in enumerate(posts, start=1))))
 
-    async def open_track(self, interaction: discord.Interaction, user_id: int, post: dict) -> None:
+    async def personal(self, user_id: int) -> tuple[discord.ui.LayoutView, list[discord.File]]:
+        posts = await self._current(user_id)
+        view = PersonalView(self, user_id)
+        if not posts:
+            view.add_item(discord.ui.Container(discord.ui.TextDisplay(
+                "## 🎧 Picks for you\nNothing to discover yet — new tracks are on the way. Check back soon!"),
+                accent_colour=ACCENT))
+            return view, []
+        tiles = await self._tiles(posts)
+        header = ("## 🎧 Picks for you\n"
+                  f"{len(posts)} tracks chosen for you, based on the genres you like, what's new and the "
+                  "artists who support the community the most.\n"
+                  "Tap a **title** to listen. Want different ones? Press **New picks**.")
+        files = build_layout(tiles, posts, header, view.button, view)
+        return view, files
+
+    async def public_posts(self) -> list[dict]:
         db = self.bot.db
-        await db.execute("INSERT INTO discover_clicks(user_id, post_id, clicked_at) VALUES(?,?,?) "
-                         "ON CONFLICT (user_id, post_id) DO UPDATE SET clicked_at=excluded.clicked_at",
-                         (user_id, post["id"], now()))
-        link = discord.ui.View()
-        link.add_item(discord.ui.Button(label=f"Open on {PLATFORM_NAME[post['platform']]}", url=post["url"],
-                                        emoji=PLATFORM_EMOJI[post["platform"]]))
-        title = post.get("title") or f"{PLATFORM_NAME[post['platform']]} post"
-        await interaction.response.send_message(f"▶️ **{title}**", view=link, ephemeral=True)
-        embed, file, view = await self.screen(user_id)
+        chosen = pick(await self.candidates(0), Viewer(user_id=0, genres=set()), now(), n=BATCH,
+                      rng=random.Random())
+        return [dict(await db.fetchone("SELECT * FROM posts WHERE id=?", (c.post_id,))) for c in chosen]
+
+    async def refresh_public(self) -> None:
+        """Grade pública do #discover: aparece sem clique e troca sozinha a cada poucas horas."""
+        db = self.bot.db
+        channel = await self.bot.channel("discover")
+        if not isinstance(channel, discord.TextChannel):
+            return
+        # painel antigo (versão com botão Discover) sai
+        old = await db.get_int_setting("msg_discover")
+        if old:
+            try:
+                await channel.get_partial_message(old).delete()
+            except discord.HTTPException:
+                pass
+            await db.execute("DELETE FROM settings WHERE key='msg_discover'")
+        posts = await self.public_posts()
+        view = PublicView(self.bot)
+        header = ("# 🧭 Discover\n"
+                  "Fresh tracks from independent artists in the Backline community — refreshed every "
+                  f"{PUBLIC_REFRESH_HOURS} hours.\n"
+                  "Tap a **title** to listen, and leave some love: watch, like, comment, follow.\n"
+                  "Want picks matched to your taste? Press **Picks for you**.")
+        if posts:
+            files = build_layout(await self._tiles(posts), posts, header, view.button, view)
+        else:
+            files = []
+            view.add_item(discord.ui.Container(discord.ui.TextDisplay(
+                header + "\n\n*No tracks yet — be the first to share yours in the post channel!*"),
+                discord.ui.ActionRow(view.button), accent_colour=ACCENT))
+        mid = await db.get_int_setting("msg_discover_public")
+        if mid:
+            try:
+                await channel.get_partial_message(mid).edit(view=view, attachments=files)
+                return
+            except discord.HTTPException:
+                pass
+        msg = await channel.send(view=view, files=files)
+        await db.set_setting("msg_discover_public", msg.id)
+
+    @tasks.loop(hours=PUBLIC_REFRESH_HOURS)
+    async def public_loop(self) -> None:
         try:
-            kwargs = {"attachments": [file]} if file else {"attachments": []}
-            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=view, **kwargs)
-        except discord.HTTPException:
-            pass
+            await self.refresh_public()
+        except Exception as e:  # noqa: BLE001
+            await self.bot.log_admin(f"⚠️ Discover público não atualizou: `{str(e)[:300]}`")
+
+    @public_loop.before_loop
+    async def _ready(self) -> None:
+        await self.bot.wait_until_ready()
+        await asyncio.sleep(5)
 
 
 async def setup(bot):

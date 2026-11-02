@@ -12,7 +12,6 @@ from ..i18n import bi, t
 from ..scoring import level_color, level_role_name
 from ..welcome import build as build_welcome
 from .community import SuggestionsView, suggestions_embed
-from .discover import DiscoverPanelView, panel_embed as discover_panel_embed
 from .feed import PostPanelView
 from .mutual import Mutual, MutualPanelView
 from .onboarding import JoinView
@@ -280,7 +279,6 @@ class ServerSetup(commands.Cog):
                                  description=bi("post_panel_desc", n=cfg.posts_per_week), colour=0x5865F2)
             await self._panel("post", chans["post"], post, PostPanelView(self.bot))
             await self._panel("mutual", chans["mutual"], Mutual.panel_embed(), MutualPanelView(self.bot))
-            await self._panel("discover", chans["discover"], discover_panel_embed(), DiscoverPanelView(self.bot))
 
             part = self.bot.get_cog("Participation")
             if part:
