@@ -17,7 +17,7 @@ from discord.ext import commands, tasks
 
 from ..db import now
 from ..discover import DAY, NEW_ARTIST_DAYS, Candidate, Viewer, pick
-from ..grid import Tile, _placeholder
+from ..grid import Tile, render_tile
 from ..links import PLATFORM_EMOJI, PLATFORM_NAME
 
 BATCH = 6
@@ -33,28 +33,19 @@ def _md(text: str) -> str:
 
 def build_layout(tiles: list[Tile], posts: list[dict], header: str, button: discord.ui.Button,
                  view: discord.ui.LayoutView) -> list[discord.File]:
-    """Monta no view: texto do topo, galeria de capas, lista com títulos clicáveis e o botão."""
+    """Texto do topo, galeria 3×2 (cada quadro já traz título/artista/nível embaixo da capa),
+    uma linha com os links para ouvir e o botão."""
     files: list[discord.File] = []
     items = []
-    for t, p in zip(tiles, posts):
-        if p.get("thumb_url"):
-            items.append(discord.MediaGalleryItem(p["thumb_url"], description=t.title[:100]))
-        else:   # Instagram não tem capa pública: arte padrão gerada aqui
-            buf = io.BytesIO()
-            _placeholder(t.platform).save(buf, "PNG")
-            buf.seek(0)
-            name = f"cover_{t.number}.png"
-            files.append(discord.File(buf, filename=name))
-            items.append(discord.MediaGalleryItem(f"attachment://{name}", description=t.title[:100]))
-    lines = []
-    for t, p in zip(tiles, posts):
-        dot = "🟡" if t.badge.lower().startswith("new") else "🟢"
-        lines.append(f"**{t.number} · [{_md(t.title)}]({p['url']})**\n"
-                     f"{_md(t.artist)} · {t.genre} · {dot} {t.badge}")
+    for t in tiles:
+        name = f"track_{t.number}.png"
+        files.append(discord.File(io.BytesIO(render_tile(t)), filename=name))
+        items.append(discord.MediaGalleryItem(f"attachment://{name}", description=t.title[:100]))
+    listen = "   ".join(f"[▶ {t.number}]({p['url']})" for t, p in zip(tiles, posts))
     container = discord.ui.Container(
         discord.ui.TextDisplay(header),
         discord.ui.MediaGallery(*items),
-        discord.ui.TextDisplay("\n\n".join(lines)),
+        discord.ui.TextDisplay(f"### {listen}"),
         discord.ui.Separator(),
         discord.ui.ActionRow(button),
         accent_colour=ACCENT)
@@ -231,8 +222,9 @@ class Discover(commands.Cog):
         header = ("## 🎧 Picks for you\n"
                   f"{len(posts)} tracks chosen for you, based on the genres you like, what's new and the "
                   "artists who support the community the most.\n"
-                  "Tap a **title** to listen. Want different ones? Press **New picks**.")
-        files = build_layout(tiles, posts, header, view.button, view)
+                  "Tap **▶ number** below the grid to listen. Want different ones? Press **New picks**.")
+        files = await asyncio.get_running_loop().run_in_executor(
+            None, lambda: build_layout(tiles, posts, header, view.button, view))
         return view, files
 
     async def public_posts(self) -> list[dict]:
@@ -260,10 +252,12 @@ class Discover(commands.Cog):
         header = ("# 🧭 Discover\n"
                   "Fresh tracks from independent artists in the Backline community — refreshed every "
                   f"{PUBLIC_REFRESH_HOURS} hours.\n"
-                  "Tap a **title** to listen, and leave some love: watch, like, comment, follow.\n"
+                  "Tap **▶ number** below the grid to listen, and leave some love: watch, like, comment, follow.\n"
                   "Want picks matched to your taste? Press **Picks for you**.")
         if posts:
-            files = build_layout(await self._tiles(posts), posts, header, view.button, view)
+            tiles = await self._tiles(posts)
+            files = await asyncio.get_running_loop().run_in_executor(
+                None, lambda: build_layout(tiles, posts, header, view.button, view))
         else:
             files = []
             view.add_item(discord.ui.Container(discord.ui.TextDisplay(

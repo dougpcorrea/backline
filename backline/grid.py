@@ -125,3 +125,29 @@ def render(tiles: list[Tile]) -> bytes:
     buf = io.BytesIO()
     canvas.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
+
+
+# ---------- quadro único (capa em cima, texto embaixo) para a galeria do Discord ----------
+SQ = 600          # quadrado: a galeria do Discord recorta em quadrado, então o texto vai dentro dele
+COVER_H = 420
+
+
+def render_tile(t: Tile) -> bytes:
+    canvas = Image.new("RGB", (SQ, SQ), CARD)
+    d = ImageDraw.Draw(canvas)
+    cover = _cover(t).resize((SQ, SQ), Image.LANCZOS)
+    top = (SQ - COVER_H) // 2
+    canvas.paste(cover.crop((0, top, SQ, top + COVER_H)), (0, 0))
+    f_num, f_title, f_sub, f_badge = _font(34), _font(38), _font(27), _font(26)
+    d.rounded_rectangle((18, 18, 82, 76), 14, fill=(0, 0, 0))
+    n = str(t.number)
+    d.text((50 - d.textlength(n, font=f_num) / 2, 27), n, font=f_num, fill=WHITE)
+    x, y = 26, COVER_H + 18
+    d.text((x, y), _fit(d, t.title, f_title, SQ - 2 * x), font=f_title, fill=WHITE)
+    d.text((x, y + 52), _fit(d, f"{t.artist} · {t.genre}", f_sub, SQ - 2 * x), font=f_sub, fill=MUTED)
+    color = AMBER if t.badge.lower().startswith("new") else GREEN
+    d.ellipse((x + 2, y + 104, x + 18, y + 120), fill=color)
+    d.text((x + 28, y + 97), t.badge, font=f_badge, fill=color)
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
