@@ -303,21 +303,27 @@ class Admin(commands.Cog):
 
     # ---------- atualização automática pelo GitHub ----------
     async def _github_head(self, repo: str, branch: str) -> dict | None:
-        """Último commit do repositório. Usa ETag: resposta 304 (nada novo) não gasta o limite do GitHub,
-        então dá pra conferir a cada 30 segundos."""
-        headers = {"Accept": "application/vnd.github+json"}
-        etag = getattr(self, "_etag", None)
-        if etag:
-            headers["If-None-Match"] = etag
-        async with self.bot.session.get(f"https://api.github.com/repos/{repo}/commits/{branch}",
-                                        headers=headers) as r:
-            if r.status == 304:
-                return self._head_cache
+        """Último commit do branch, lido pelo protocolo do git (github.com/<repo>.git/info/refs).
+        Não usa a API do GitHub, que sem login limita a 60 consultas por hora."""
+        url = f"https://github.com/{repo}.git/info/refs?service=git-upload-pack"
+        async with self.bot.session.get(url, headers={"User-Agent": "git/2.40 backline-bot"}) as r:
             if r.status != 200:
                 return None
-            self._etag = r.headers.get("ETag")
-            self._head_cache = await r.json()
-            return self._head_cache
+            body = await r.text(errors="ignore")
+        for line in body.splitlines():
+            if line.rstrip().endswith(f"refs/heads/{branch}"):
+                sha = line.split()[0][-40:]
+                return {"sha": sha, "commit": {"message": ""}}
+        return None
+
+    async def _commit_message(self, repo: str, sha: str) -> str:
+        try:
+            async with self.bot.session.get(f"https://api.github.com/repos/{repo}/commits/{sha}") as r:
+                if r.status == 200:
+                    return ((await r.json()).get("commit", {}).get("message") or "").splitlines()[0][:200]
+        except Exception:  # noqa: BLE001
+            pass
+        return ""
 
     async def _github_update(self, force: bool = False) -> str | None:
         """Instala a versão mais nova do GitHub. Retorna a mensagem, ou None se não havia nada novo."""
@@ -340,7 +346,7 @@ class Admin(commands.Cog):
             raw = await r.read()
         await self._install_bytes(raw)
         await self.bot.db.set_setting("installed_sha", sha)
-        msg = head.get("commit", {}).get("message", "").splitlines()[0][:200]
+        msg = await self._commit_message(repo, sha)
         return f"✅ Versão `{sha[:7]}` instalada: {msg}"
 
     @tasks.loop(seconds=30)
