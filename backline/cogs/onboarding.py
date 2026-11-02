@@ -233,10 +233,16 @@ async def run_verification(bot, interaction: discord.Interaction) -> None:
 
     code = member["verify_code"].upper()
     ok, missing, failed = [], [], []
+    # contas TESTER (is_test=1, sem demo_name): perfis fictícios valem sem código na bio
+    tester = bool(member["is_test"]) and not member["demo_name"]
     for h in await db.handles_of(uid):
         if h["verified"]:
             continue
         platform, handle = h["platform"], h["handle"]
+        if tester:
+            await db.execute("UPDATE handles SET verified=1 WHERE user_id=? AND platform=?", (uid, platform))
+            ok.append(PLATFORM_NAME[platform])
+            continue
         try:
             profile = await bot.collectors.profile(platform, handle)
         except CollectorError as e:

@@ -21,6 +21,7 @@ EXTENSIONS = [
     "backline.cogs.discover",
     "backline.cogs.community",
     "backline.cogs.demo",
+    "backline.cogs.oneoff",
     "backline.cogs.participation",
     "backline.cogs.recruitment",
     "backline.cogs.admin",

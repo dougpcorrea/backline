@@ -101,6 +101,10 @@ class Feed(commands.Cog):
         await db.execute("UPDATE posts SET title=?, thumb_url=?, meta_at=? WHERE id=?",
                          (title, thumb, now(), post_id))
 
+        disc = bot.get_cog("Discover")
+        if disc:
+            import asyncio
+            asyncio.create_task(disc.publish_data())   # já entra no app do Discover
         return t("post_ok", lang, channel=await bot.channel_mention("discover"))
 
     async def card(self, post_id: int) -> tuple[discord.Embed, discord.ui.View]:
