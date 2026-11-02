@@ -26,7 +26,7 @@ META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velh
 PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
-DISCOVER_MSG_VERSION = "2"   # suba quando mudar o texto da mensagem do #discover
+DISCOVER_MSG_VERSION = "3"   # suba quando mudar o texto da mensagem do #discover
 ACCENT = 0x5865F2
 
 
@@ -263,7 +263,7 @@ class Discover(commands.Cog):
                 "**How it works**\n"
                 "1. Tap **Open Discover** — a grid with 6 tracks opens right here in Discord.\n"
                 "2. Tap any track to listen.\n"
-                "3. Want more? Hit **Next 6**.\n\n"
+                "3. Open all 6 to unlock the **next 6**.\n\n"
                 "-# Enjoyed something? Show some love: watch, like, comment and follow."),
             discord.ui.Separator(),
             discord.ui.ActionRow(view.button),

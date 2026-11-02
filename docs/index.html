@@ -15,7 +15,13 @@
   header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
   #more { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 14px;
     font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
-  #more:hover { filter:brightness(1.1); }
+  #more:hover:not(:disabled) { filter:brightness(1.1); }
+  #more:disabled { background:#3a3c42; color:#b5bac1; cursor:not-allowed; }
+  .bar { height:4px; background:#2b2d31; border-radius:4px; margin:0 0 14px; overflow:hidden; }
+  #progress { height:100%; width:0; background:var(--green); transition:width .25s ease; }
+  .tile.seen .cover img, .tile.seen .ph { filter:brightness(.45) saturate(.6); }
+  .viewed { position:absolute; top:10px; right:10px; background:var(--green); color:#fff; font-size:12px;
+    font-weight:700; letter-spacing:.04em; padding:5px 9px; border-radius:8px; }
   #grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
   .tile { all:unset; cursor:pointer; background:var(--card); border-radius:12px; overflow:hidden;
     display:flex; flex-direction:column; transition:transform .12s ease, box-shadow .12s ease; }
@@ -47,13 +53,14 @@
   <header>
     <div>
       <h1>🧭 Discover</h1>
-      <p>Tap a track to listen — then leave some love: watch, like, comment, follow.</p>
+      <p>Tap a track to listen. Open all 6 to unlock the next 6.</p>
     </div>
     <button id="more" hidden>🔄 Next 6</button>
   </header>
+  <div class="bar"><div id="progress"></div></div>
   <section id="grid"><p class="empty">Loading…</p></section>
   <footer>Backline · independent artists supporting each other</footer>
 </main>
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
