@@ -26,7 +26,7 @@ META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velh
 PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
-DISCOVER_MSG_VERSION = "4"
+DISCOVER_MSG_VERSION = "5"
 MIN_DISCOVER_LEVEL = 3   # suba quando mudar o texto da mensagem do #discover
 ACCENT = 0x5865F2
 
@@ -275,8 +275,9 @@ class Discover(commands.Cog):
                 "1. Tap **Open Discover** — a grid with 6 tracks opens right here in Discord.\n"
                 "2. Tap any track to listen.\n"
                 "3. Open all 6 to unlock the **next 6**.\n\n"
-                "**Want your music here?** Only artists at **Lv.3 or higher** appear in Discover. "
-                "Reach it by commenting on other members' posts — the bot checks comments every 30 minutes.\n\n"
+                "**Want your music here?** Only artists at **Lv.3 or higher** appear in Discover — and "
+                "**the higher your level, the more often you show up, in the top spots.** "
+                "Every track you open and comment on here raises your level (the bot checks comments every 30 minutes).\n\n"
                 "-# Enjoyed something? Show some love: watch, like, comment and follow."),
             discord.ui.Separator(),
             discord.ui.ActionRow(view.button),
@@ -335,7 +336,8 @@ class Discover(commands.Cog):
             out.append({"id": p["id"], "title": t.title, "artist": t.artist, "genre": t.genre, "badge": t.badge,
                         "new": t.badge.lower().startswith("new"), "platform": p["platform"],
                         "platform_name": PLATFORM_NAME[p["platform"]], "url": p["url"], "cover": cover,
-                        "created_at": p["created_at"], "demo": str(p["external_id"]).startswith("demo-")})
+                        "created_at": p["created_at"], "demo": str(p["external_id"]).startswith("demo-"),
+                        "rank": len(out)})   # ordem do sorteio ponderado (nível alto tende a vir primeiro)
         payload = _json.dumps({"updated_at": now(), "tracks": out}).encode()
         await self._upload(base, headers, "discover.json", payload, "application/json")
 

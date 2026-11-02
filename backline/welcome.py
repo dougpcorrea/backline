@@ -25,6 +25,8 @@ These verified interactions feed a **10-level reputation system**: the more you 
 
 **Discover is for active supporters: only artists at Lv.3 or higher appear in {discover}.** Getting there is simple — comment on other members' posts.
 
+**The higher your level, the more often your music shows up in Discover — and in the top spots.** That's why using Discover a lot matters: every track you open and comment on raises your level and puts your own music in front of more artists.
+
 -# Comments are the only interaction tracked automatically right now. Likes, saves and shares are encouraged but can't be verified.
 
 ### 🤝 03 — Mutual Follow

@@ -71,9 +71,9 @@ class OneOff(commands.Cog):
         import re
         from ..welcome import DEFAULT_TEXT
         db = self.bot.db
-        if await db.get_setting("oneoff_reputation_text_v1"):
+        if await db.get_setting("oneoff_reputation_text_v2"):
             return
-        await db.set_setting("oneoff_reputation_text_v1", "1")
+        await db.set_setting("oneoff_reputation_text_v2", "1")
         text = await db.get_setting("welcome_text")
         if text:
             new02 = re.search(r"### 🏆 02 — Your Reputation\n.*?(?=### 🤝 03)", DEFAULT_TEXT, flags=re.S).group(0)
