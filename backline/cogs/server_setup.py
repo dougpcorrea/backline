@@ -18,9 +18,11 @@ from .onboarding import JoinView
 
 MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
+FOUNDER_ROLE = "🌟 Founder Member"
+FOUNDER_LIMIT = 100   # os primeiros 100 membros verificados viram fundadores
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "8"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "9"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -80,6 +82,26 @@ class ServerSetup(commands.Cog):
                 pass
         await db.set_setting(f"role_{key}", role.id)
         return role
+
+    async def _backfill_founders(self, guild: discord.Guild, founder: discord.Role) -> None:
+        """Dono do servidor + membros reais já verificados (por ordem de verificação) até o limite."""
+        rows = await self.bot.db.fetchall(
+            "SELECT user_id FROM members WHERE verified_at IS NOT NULL AND left_at IS NULL "
+            "AND COALESCE(is_test,0)=0 AND demo_name IS NULL ORDER BY verified_at")
+        ids = [guild.owner_id] + [int(r["user_id"]) for r in rows]
+        given = []
+        for uid in dict.fromkeys(ids):
+            if len(founder.members) >= FOUNDER_LIMIT:
+                break
+            m = guild.get_member(uid)
+            if m and not m.bot and founder not in m.roles:
+                try:
+                    await m.add_roles(founder, reason="Backline: Founder Member")
+                    given.append(m.mention)
+                except discord.HTTPException:
+                    pass
+        if given:
+            await self.bot.log_admin(f"🌟 Founder Member dado para: {', '.join(given)}")
 
     async def _channel(self, guild, category, key, name, visibility, can_write,
                        member_role, recruiter_role) -> discord.TextChannel:
@@ -231,11 +253,12 @@ class ServerSetup(commands.Cog):
             member_role = await self._role(guild, "member", MEMBER_ROLE)
             recruiter_role = await self._role(guild, "recruiter", RECRUITER_ROLE, 0xC9A227)
             await self._role(guild, "mutual", MUTUAL_ROLE)
+            founder_role = await self._role(guild, "founder", FOUNDER_ROLE, 0xE8B04B)
             level_roles = [await self._role(guild, f"level_{n}", level_role_name(n), level_color(n), hoist=False)
                            for n in range(1, 11)]
 
             # Ordem: níveis no topo (a cor do nome vem deles), depois divulgador, membro, gêneros.
-            ordered = list(reversed(level_roles)) + [recruiter_role, member_role] + genre_roles
+            ordered = list(reversed(level_roles)) + [founder_role, recruiter_role, member_role] + genre_roles
             top = guild.me.top_role.position
             positions = {}
             pos = top - 1
@@ -250,6 +273,8 @@ class ServerSetup(commands.Cog):
             except discord.HTTPException:
                 role_warning = ("\n⚠️ Não consegui reordenar os cargos. Arraste o cargo do bot para o topo "
                                 "da lista em Configurações do servidor > Cargos e rode /setup de novo.")
+
+            await self._backfill_founders(guild, founder_role)
 
             # ---- canais ----
             # o #feed saiu: o Discover substitui a linha do tempo

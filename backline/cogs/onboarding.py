@@ -323,12 +323,24 @@ async def run_verification(bot, interaction: discord.Interaction) -> None:
     await interaction.edit_original_response(content=None, embed=embed, view=view)
 
 
+async def founder_eligible(bot, uid: int, founder: discord.Role) -> bool:
+    """Founder Member: os primeiros membros reais verificados (contas de teste e demo ficam de fora)."""
+    from .server_setup import FOUNDER_LIMIT
+    row = await bot.db.fetchone("SELECT COALESCE(is_test,0) AS t, demo_name FROM members WHERE user_id=?", (uid,))
+    if row and (row["t"] or row["demo_name"]):
+        return False
+    return len(founder.members) < FOUNDER_LIMIT
+
+
 async def grant_member_roles(bot, user: discord.abc.User) -> None:
     guild = bot.guild
     member = guild.get_member(user.id) if guild else None
     if not member:
         return
     roles = [r for r in [await bot.role("member")] if r and r not in member.roles]
+    founder = await bot.role("founder")
+    if founder and founder not in member.roles and await founder_eligible(bot, user.id, founder):
+        roles.append(founder)
     if roles:
         try:
             await member.add_roles(*roles, reason="Backline verified")

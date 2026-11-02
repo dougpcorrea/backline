@@ -367,6 +367,24 @@ class Admin(commands.Cog):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    @admin.command(name="founder", description="Dar ou tirar o cargo Founder Member de alguém")
+    async def founder(self, interaction: discord.Interaction, member: discord.Member,
+                      action: Literal["add", "remove"] = "add") -> None:
+        role = await self.bot.role("founder")
+        if not role:
+            await interaction.response.send_message("Cargo Founder Member ainda não existe — rode /setup.", ephemeral=True)
+            return
+        try:
+            if action == "add":
+                await member.add_roles(role, reason=f"Founder por {interaction.user}")
+            else:
+                await member.remove_roles(role, reason=f"Founder removido por {interaction.user}")
+        except discord.HTTPException as e:
+            await interaction.response.send_message(f"Não consegui: `{e}`", ephemeral=True)
+            return
+        verb = "agora é" if action == "add" else "não é mais"
+        await interaction.response.send_message(f"🌟 {member.mention} {verb} **Founder Member**.", ephemeral=True)
+
     @admin.command(name="post-edit", description="Editar uma publicação: original/cover, título e gêneros")
     @app_commands.describe(post_id="Número da publicação (aparece no /admin collect)",
                            kind="original ou cover", title="Novo título (vazio = mantém)",
