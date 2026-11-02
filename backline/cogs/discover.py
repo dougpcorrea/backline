@@ -320,7 +320,8 @@ class Discover(commands.Cog):
                     cover = None
             out.append({"id": p["id"], "title": t.title, "artist": t.artist, "genre": t.genre, "badge": t.badge,
                         "new": t.badge.lower().startswith("new"), "platform": p["platform"],
-                        "platform_name": PLATFORM_NAME[p["platform"]], "url": p["url"], "cover": cover})
+                        "platform_name": PLATFORM_NAME[p["platform"]], "url": p["url"], "cover": cover,
+                        "created_at": p["created_at"], "demo": str(p["external_id"]).startswith("demo-")})
         payload = _json.dumps({"updated_at": now(), "tracks": out}).encode()
         await self._upload(base, headers, "discover.json", payload, "application/json")
 

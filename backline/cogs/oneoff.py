@@ -36,27 +36,32 @@ class OneOff(commands.Cog):
             return
         await db.set_setting("oneoff_tester_reset_v1", "1")
         rows = await db.fetchall("SELECT user_id FROM members WHERE is_test=1 AND demo_name IS NULL")
-        guild = self.bot.guild
         for r in rows:
-            uid = r["user_id"]
-            for sql in ("DELETE FROM handles WHERE user_id=?", "DELETE FROM member_genres WHERE user_id=?",
-                        "DELETE FROM scores WHERE user_id=?"):
-                await db.execute(sql, (uid,))
-            await db.execute("UPDATE members SET verified_at=NULL, verify_code=NULL, manual_level=NULL "
-                             "WHERE user_id=?", (uid,))
-            member = guild.get_member(uid) if guild else None
-            if member:
-                keep = {guild.default_role}
-                backline_ids = {int(x["value"]) for x in await db.fetchall(
-                    "SELECT value FROM settings WHERE key LIKE 'role_%'") if str(x["value"]).isdigit()}
-                remove = [ro for ro in member.roles if ro.id in backline_ids and ro not in keep]
-                if remove:
-                    try:
-                        await member.remove_roles(*remove, reason="Backline tester reset")
-                    except Exception:  # noqa: BLE001
-                        pass
-            await self.bot.log_admin(f"🧪 <@{uid}> virou TESTER: cadastro zerado; no Join, perfis fictícios "
+            await self.reset_tester(r["user_id"])
+            await self.bot.log_admin(f"🧪 <@{r['user_id']}> virou TESTER: cadastro zerado; no Join, perfis fictícios "
                                      "são verificados sem código na bio.")
+
+    async def reset_tester(self, uid: int) -> None:
+        """Zera o cadastro de uma conta e marca como TESTER (perfis fictícios verificam sem código)."""
+        db, guild = self.bot.db, self.bot.guild
+        for sql in ("DELETE FROM handles WHERE user_id=?", "DELETE FROM member_genres WHERE user_id=?",
+                    "DELETE FROM scores WHERE user_id=?", "DELETE FROM mutual_members WHERE user_id=?",
+                    "DELETE FROM discover_batch WHERE user_id=?"):
+            await db.execute(sql, (uid,))
+        if not await db.get_member(uid):
+            await db.upsert_member(uid, "en")
+        await db.execute("UPDATE members SET verified_at=NULL, verify_code=NULL, manual_level=NULL, is_test=1 "
+                         "WHERE user_id=?", (uid,))
+        member = guild.get_member(uid) if guild else None
+        if member:
+            backline_ids = {int(x["value"]) for x in await db.fetchall(
+                "SELECT value FROM settings WHERE key LIKE 'role_%'") if str(x["value"]).isdigit()}
+            remove = [ro for ro in member.roles if ro.id in backline_ids]
+            if remove:
+                try:
+                    await member.remove_roles(*remove, reason="Backline tester reset")
+                except Exception:  # noqa: BLE001
+                    pass
 
     async def seed_posts(self) -> None:
         db = self.bot.db

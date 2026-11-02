@@ -350,6 +350,22 @@ class Admin(commands.Cog):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    @admin.command(name="tester-reset", description="Zerar o cadastro de uma conta TESTER (padrão: Astolfo)")
+    @app_commands.describe(member="Conta a zerar e marcar como TESTER (vazio = todas as contas TESTER)")
+    async def tester_reset(self, interaction: discord.Interaction, member: discord.Member | None = None) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        oneoff = self.bot.get_cog("OneOff")
+        if member:
+            ids = [member.id]
+        else:
+            ids = [r["user_id"] for r in await self.bot.db.fetchall(
+                "SELECT user_id FROM members WHERE is_test=1 AND demo_name IS NULL")]
+        for uid in ids:
+            await oneoff.reset_tester(uid)
+        names = ", ".join(f"<@{i}>" for i in ids) or "nenhuma conta TESTER"
+        await interaction.followup.send(f"🧪 Cadastro zerado: {names}. Pode testar o **Join** de novo "
+                                        "(perfis fictícios verificam na hora).", ephemeral=True)
+
     @admin.command(name="welcome", description="Editar o texto do #start-here")
     async def welcome(self, interaction: discord.Interaction) -> None:
         from ..welcome import DEFAULT_TEXT
