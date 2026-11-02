@@ -345,9 +345,15 @@ class Discover(commands.Cog):
                         "new": t.badge.lower().startswith("new"), "platform": p["platform"],
                         "platform_name": PLATFORM_NAME[p["platform"]], "url": p["url"], "cover": cover,
                         "created_at": p["created_at"], "demo": str(p["external_id"]).startswith("demo-"),
-                        "rank": len(out)})   # ordem do sorteio ponderado (nível alto tende a vir primeiro)
+                        "rank": len(out), "uid": str(p["user_id"])})   # rank: ordem do sorteio ponderado
         payload = _json.dumps({"updated_at": now(), "tracks": out}).encode()
         await self._upload(base, headers, "discover.json", payload, "application/json")
+        # redes verificadas de cada membro: o app só mostra publicações das redes que a pessoa usa
+        viewers: dict[str, list[str]] = {}
+        for h in await db.fetchall("SELECT user_id, platform FROM handles WHERE verified=1 "
+                                   "AND platform IN ('instagram','youtube')"):
+            viewers.setdefault(str(h["user_id"]), []).append(h["platform"])
+        await self._upload(base, headers, "viewers.json", _json.dumps(viewers).encode(), "application/json")
 
     @tasks.loop(minutes=30)
     async def public_loop(self) -> None:
