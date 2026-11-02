@@ -276,11 +276,21 @@ class Admin(commands.Cog):
 
     # ---------- atualização automática pelo GitHub ----------
     async def _github_head(self, repo: str, branch: str) -> dict | None:
+        """Último commit do repositório. Usa ETag: resposta 304 (nada novo) não gasta o limite do GitHub,
+        então dá pra conferir a cada 30 segundos."""
+        headers = {"Accept": "application/vnd.github+json"}
+        etag = getattr(self, "_etag", None)
+        if etag:
+            headers["If-None-Match"] = etag
         async with self.bot.session.get(f"https://api.github.com/repos/{repo}/commits/{branch}",
-                                        headers={"Accept": "application/vnd.github+json"}) as r:
+                                        headers=headers) as r:
+            if r.status == 304:
+                return self._head_cache
             if r.status != 200:
                 return None
-            return await r.json()
+            self._etag = r.headers.get("ETag")
+            self._head_cache = await r.json()
+            return self._head_cache
 
     async def _github_update(self, force: bool = False) -> str | None:
         """Instala a versão mais nova do GitHub. Retorna a mensagem, ou None se não havia nada novo."""
@@ -306,7 +316,7 @@ class Admin(commands.Cog):
         msg = head.get("commit", {}).get("message", "").splitlines()[0][:200]
         return f"✅ Versão `{sha[:7]}` instalada: {msg}"
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(seconds=30)
     async def auto_update(self) -> None:
         try:
             msg = await self._github_update()
