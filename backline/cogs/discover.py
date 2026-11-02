@@ -26,6 +26,7 @@ META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velh
 PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
+DISCOVER_MSG_VERSION = "2"   # suba quando mudar o texto da mensagem do #discover
 ACCENT = 0x5865F2
 
 
@@ -58,7 +59,7 @@ class PublicView(discord.ui.LayoutView):
     def __init__(self, bot, cog=None):
         super().__init__(timeout=None)
         self.bot = bot
-        self.button = discord.ui.Button(label="Open Discover — tap a track to listen", emoji="🎧",
+        self.button = discord.ui.Button(label="Open Discover", emoji="🎧",
                                         style=discord.ButtonStyle.primary, custom_id="bl:discover")
         self.button.callback = self.on_click
 
@@ -235,47 +236,48 @@ class Discover(commands.Cog):
         return [dict(await db.fetchone("SELECT * FROM posts WHERE id=?", (c.post_id,))) for c in chosen]
 
     async def refresh_public(self) -> None:
-        """Grade pública do #discover: aparece sem clique e troca sozinha a cada poucas horas."""
+        """Publica os dados da Activity e garante a mensagem do #discover (texto curto + botão)."""
         db = self.bot.db
+        try:
+            await self.publish_data()
+        except Exception as e:  # noqa: BLE001
+            await self.bot.log_admin(f"⚠️ Dados do Discover (Activity) não publicados: `{str(e)[:300]}`")
         channel = await self.bot.channel("discover")
         if not isinstance(channel, discord.TextChannel):
             return
-        # painel antigo (versão com botão Discover) sai
-        old = await db.get_int_setting("msg_discover")
+        old = await db.get_int_setting("msg_discover")   # painel da primeira versão
         if old:
             try:
                 await channel.get_partial_message(old).delete()
             except discord.HTTPException:
                 pass
             await db.execute("DELETE FROM settings WHERE key='msg_discover'")
-        posts = await self.public_posts()
-        view = PublicView(self.bot)
-        header = ("# 🧭 Discover\n"
-                  "Fresh tracks from independent artists in the Backline community.\n"
-                  "Press **Open Discover** and tap any track to listen — then leave some love: "
-                  "watch, like, comment, follow.")
-        if posts:
-            tiles = await self._tiles(posts)
-            files = await asyncio.get_running_loop().run_in_executor(
-                None, lambda: build_layout(tiles, posts, header, view.button, view))
-        else:
-            files = []
-            view.add_item(discord.ui.Container(discord.ui.TextDisplay(
-                header + "\n\n*No tracks yet — be the first to share yours in the post channel!*"),
-                discord.ui.ActionRow(view.button), accent_colour=ACCENT))
-        try:
-            await self.publish_data()
-        except Exception as e:  # noqa: BLE001
-            await self.bot.log_admin(f"⚠️ Dados do Discover (Activity) não publicados: `{str(e)[:300]}`")
         mid = await db.get_int_setting("msg_discover_public")
+        if mid and await db.get_setting("discover_msg_version") == DISCOVER_MSG_VERSION:
+            return  # mensagem já está na versão atual: não edita à toa
+        view = PublicView(self.bot)
+        view.add_item(discord.ui.Container(
+            discord.ui.TextDisplay(
+                "# 🧭 Discover\n"
+                "New music from independent artists in the Backline community.\n\n"
+                "**How it works**\n"
+                "1. Tap **Open Discover** — a grid with 6 tracks opens right here in Discord.\n"
+                "2. Tap any track to listen.\n"
+                "3. Want more? Hit **Next 6**.\n\n"
+                "-# Enjoyed something? Show some love: watch, like, comment and follow."),
+            discord.ui.Separator(),
+            discord.ui.ActionRow(view.button),
+            accent_colour=ACCENT))
         if mid:
             try:
-                await channel.get_partial_message(mid).edit(view=view, attachments=files)
+                await channel.get_partial_message(mid).edit(view=view, attachments=[])
+                await db.set_setting("discover_msg_version", DISCOVER_MSG_VERSION)
                 return
             except discord.HTTPException:
                 pass
-        msg = await channel.send(view=view, files=files)
+        msg = await channel.send(view=view)
         await db.set_setting("msg_discover_public", msg.id)
+        await db.set_setting("discover_msg_version", DISCOVER_MSG_VERSION)
 
     # ---------- dados da Activity (Supabase Storage público) ----------
     def _supabase(self) -> tuple[str, dict]:
