@@ -350,6 +350,44 @@ class Admin(commands.Cog):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    @admin.command(name="scores", description="Tabela de participação: dado, recebido, conta e nível de cada membro")
+    async def scores(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        db, cfg = self.bot.db, self.bot.cfg
+        from ..services import compute_scores
+        sc = await compute_scores(db, cfg.window_days, cfg.min_activity, cfg.target_ratio, save=False)
+        members = await db.fetchall("SELECT user_id, manual_level, demo_name FROM members "
+                                    "WHERE verified_at IS NOT NULL AND left_at IS NULL")
+        posters = {r["user_id"] for r in await db.fetchall("SELECT DISTINCT user_id FROM posts WHERE removed=0")}
+        rows = []
+        for m in members:
+            uid = m["user_id"]
+            s_ = sc.get(uid)
+            g, r = (s_.given, s_.received) if s_ else (0, 0)
+            user = self.bot.get_user(uid)
+            name = m["demo_name"] or (user.display_name if user else str(uid))
+            if m["manual_level"]:
+                lv, why = f"Lv.{m['manual_level']}", "fixo (admin)"
+            elif g == 0 and uid not in posters:
+                lv, why = "—", "sem participação"
+            else:
+                lvl = s_.level if s_ else 1
+                if g == 0:
+                    why = "publicou, não comentou"
+                elif r == 0:
+                    why = f"não recebeu{', deu < ' + str(cfg.min_activity) if g < cfg.min_activity else ''}"
+                else:
+                    why = f"{g}÷{r} = {g / r:.2f}" + (f", deu < {cfg.min_activity}" if g < cfg.min_activity else "")
+                lv = f"Lv.{lvl}"
+            rows.append((name[:14], g, r, why[:26], lv))
+        rows.sort(key=lambda x: (x[4] == "—", -int(x[4][3:]) if x[4].startswith("Lv.") else 0, -x[1]))
+        head = f"{'Membro':<14} {'Dado':>4} {'Rec':>4}  {'Conta':<26} Nível"
+        lines = [head, "-" * len(head)] + [f"{n:<14} {g:>4} {r:>4}  {w:<26} {lv}" for n, g, r, w, lv in rows[:45]]
+        embed = discord.Embed(title=f"🏆 Participação — últimos {cfg.window_days} dias",
+                              description="```\n" + "\n".join(lines)[:3900] + "\n```", colour=0x5865F2)
+        embed.set_footer(text=f"{len(rows)} membros · Discover só mostra Lv.3+ · teto Lv.3 se deu < {cfg.min_activity}")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     @admin.command(name="tester-reset", description="Zerar o cadastro de uma conta TESTER (padrão: Astolfo)")
     @app_commands.describe(member="Conta a zerar e marcar como TESTER (vazio = todas as contas TESTER)")
     async def tester_reset(self, interaction: discord.Interaction, member: discord.Member | None = None) -> None:

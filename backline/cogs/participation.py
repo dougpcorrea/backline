@@ -27,11 +27,12 @@ class Participation(commands.Cog):
         self.recalc_loop.cancel()
 
     # ================= coleta =================
-    async def collect_post(self, post, advance_checkpoint: bool = True) -> int:
+    async def collect_post(self, post, advance_checkpoint: bool = True, comments=None) -> int:
         """Coleta os comentários de uma publicação. Devolve quantos membros novos comentaram."""
         bot, db = self.bot, self.bot.db
         try:
-            comments = await bot.collectors.comments(post["platform"], post["external_id"], post["url"])
+            if comments is None:
+                comments = await bot.collectors.comments(post["platform"], post["external_id"], post["url"])
         except CollectorError as e:
             await db.execute("INSERT INTO collection_log(post_id, at, ok, found, error) VALUES(?,?,0,0,?)",
                              (post["id"], now(), str(e)[:500]))
@@ -64,14 +65,23 @@ class Participation(commands.Cog):
         except discord.HTTPException:
             pass  # DMs fechadas
 
-    @tasks.loop(minutes=15)
+    @tasks.loop(minutes=30)
     async def collect_loop(self) -> None:
+        """A cada 30 min: lê os comentários das publicações da semana (agenda em services.collect_interval)."""
         if await self.bot.is_paused():
             return
         async with self._lock:
-            due = await posts_due_for_collection(self.bot.db, self.bot.cfg.checkpoints_hours)
+            due = await posts_due_for_collection(self.bot.db)
+            ig = [p for p in due if p["platform"] == "instagram"]
+            batch = None
+            if len(ig) > 1:
+                try:
+                    batch = await self.bot.collectors.instagram_comments_batch([p["url"] for p in ig])
+                except CollectorError:
+                    batch = None
             for post in due:
-                await self.collect_post(post)
+                pre = batch.get(post["url"]) if (batch and post["platform"] == "instagram") else None
+                await self.collect_post(post, advance_checkpoint=False, comments=pre)
             if due:
                 await self._recalc()
 

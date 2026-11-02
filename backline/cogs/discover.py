@@ -26,7 +26,8 @@ META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velh
 PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
-DISCOVER_MSG_VERSION = "3"   # suba quando mudar o texto da mensagem do #discover
+DISCOVER_MSG_VERSION = "4"
+MIN_DISCOVER_LEVEL = 3   # suba quando mudar o texto da mensagem do #discover
 ACCENT = 0x5865F2
 
 
@@ -137,6 +138,8 @@ class Discover(commands.Cog):
             avg[r["user_id"]] = float(r["a"])
         out = []
         for p in posts:
+            if (p["manual_level"] or p["level"] or 0) < MIN_DISCOVER_LEVEL:
+                continue   # regra: só artistas Lv.3+ aparecem no Discover
             boost = p["multiplier"] if p["multiplier"] and (not p["until"] or p["until"] > t) else 1.0
             out.append(Candidate(post_id=p["id"], user_id=p["user_id"], created_at=p["created_at"],
                                  level=p["manual_level"] or p["level"] or 1, genres=genres.get(p["user_id"], set()),
@@ -272,6 +275,8 @@ class Discover(commands.Cog):
                 "1. Tap **Open Discover** — a grid with 6 tracks opens right here in Discord.\n"
                 "2. Tap any track to listen.\n"
                 "3. Open all 6 to unlock the **next 6**.\n\n"
+                "**Want your music here?** Only artists at **Lv.3 or higher** appear in Discover. "
+                "Reach it by commenting on other members' posts — the bot checks comments every 30 minutes.\n\n"
                 "-# Enjoyed something? Show some love: watch, like, comment and follow."),
             discord.ui.Separator(),
             discord.ui.ActionRow(view.button),

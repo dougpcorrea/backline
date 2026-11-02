@@ -19,11 +19,13 @@ Take the time to genuinely appreciate their work: watch their videos, listen unt
 There's no fixed queue or assigned groups. Explore freely, discover new music, and build genuine connections.
 
 ### 🏆 02 — Your Reputation
-Backline uses an automated system to track verifiable interactions between registered artists on Instagram and YouTube.
+Every **30 minutes**, the Backline bot checks the posts shared in {post} through the Instagram and YouTube APIs and finds the comments left by other registered members. No login or account connection needed — it only reads public comments and matches them to the profiles you verified.
 
-Your participation contributes to a 10-level reputation system, making it easier for other members to recognize artists who actively support the community. The more consistently you participate, the stronger your reputation becomes.
+These verified interactions feed a **10-level reputation system**: the more you support other artists compared to the support you receive, the higher your level. Levels are recalculated automatically, so keep showing up.
 
--# Currently, verified comments are the primary ranking metric. Other interactions are encouraged but not universally tracked.
+**Discover is for active supporters: only artists at Lv.3 or higher appear in {discover}.** Getting there is simple — comment on other members' posts.
+
+-# Comments are the only interaction tracked automatically right now. Likes, saves and shares are encouraged but can't be verified.
 
 ### 🤝 03 — Mutual Follow
 Discover artists with similar musical interests through our optional Mutual Follow system in {mutual}.

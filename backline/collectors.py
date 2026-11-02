@@ -156,6 +156,32 @@ class Collectors:
                 return Profile(handle, bio, str(_first(it, "authorMeta.id", "id") or "") or None)
         return None
 
+    async def instagram_comments_batch(self, urls: list[str], limit: int = 300) -> dict[str, list[Comment]] | None:
+        """Lê comentários de vários posts numa execução só do Apify. None = não deu pra separar por post."""
+        items = await self._apify(self.cfg.apify_ig_comments, {"directUrls": urls, "resultsLimit": limit})
+        codes = {u: (re.search(r"/(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)", u) or [None, u])[1] for u in urls}
+        out: dict[str, list[Comment]] = {u: [] for u in urls}
+        for it in items:
+            src = " ".join(str(it.get(k) or "") for k in ("postUrl", "inputUrl", "url", "postShortCode", "shortCode"))
+            target = next((u for u, c in codes.items() if c and c in src), None)
+            if target is None:
+                return None
+            c = self._ig_comment(it)
+            if c:
+                out[target].append(c)
+        return out
+
+    def _ig_comment(self, it: dict) -> "Comment | None":
+        cid = _first(it, "id", "commentId", "pk")
+        if not cid:
+            return None
+        return Comment(
+            comment_id=str(cid),
+            author_handle=(_first(it, "ownerUsername", "owner.username", "username") or "").lower() or None,
+            author_external_id=str(_first(it, "owner.id", "ownerId") or "") or None,
+            created_at=_to_ts(_first(it, "timestamp", "createdAt")),
+        )
+
     async def instagram_comments(self, url: str, limit: int = 1000) -> list[Comment]:
         items = await self._apify(self.cfg.apify_ig_comments, {"directUrls": [url], "resultsLimit": limit})
         out = []

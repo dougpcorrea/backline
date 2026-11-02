@@ -28,6 +28,7 @@ class OneOff(commands.Cog):
             await self.seed_posts()
             await self.refetch_instagram_meta()
             await self.drop_tiktok()
+            await self.update_reputation_text()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -64,6 +65,24 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def update_reputation_text(self) -> None:
+        """Seção 02 do #start-here nova (verificação a cada 30 min + Discover só Lv.3+), também no texto editado."""
+        import re
+        from ..welcome import DEFAULT_TEXT
+        db = self.bot.db
+        if await db.get_setting("oneoff_reputation_text_v1"):
+            return
+        await db.set_setting("oneoff_reputation_text_v1", "1")
+        text = await db.get_setting("welcome_text")
+        if text:
+            new02 = re.search(r"### 🏆 02 — Your Reputation\n.*?(?=### 🤝 03)", DEFAULT_TEXT, flags=re.S).group(0)
+            text2 = re.sub(r"###[^\n]*02[^\n]*Reputation[^\n]*\n.*?(?=###[^\n]*03)", lambda m: new02, text, flags=re.S)
+            if text2 != text:
+                await db.set_setting("welcome_text", text2)
+        setup = self.bot.get_cog("ServerSetup")
+        if setup and self.bot.guild:
+            await setup.refresh_welcome(self.bot.guild)
 
     async def drop_tiktok(self) -> None:
         """TikTok saiu da plataforma (não dá pra conferir comentários lá)."""

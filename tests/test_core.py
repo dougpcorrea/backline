@@ -245,6 +245,8 @@ async def test_discover_candidates_query(db):
     await db.execute("INSERT INTO posts(user_id, platform, url, external_id, created_at) VALUES(2,'youtube','u','a',?)", (t,))
     await db.execute("INSERT INTO posts(user_id, platform, url, external_id, created_at) VALUES(3,'tiktok','u2','b',?)", (t,))
     await db.execute("INSERT INTO member_genres(user_id, genre) VALUES(2,'Pop')")
+    for uid in (2, 3):   # Discover só mostra Lv.3+
+        await db.execute("INSERT INTO scores(user_id, level, updated_at) VALUES(?,5,?)", (uid, t))
     await db.execute("INSERT INTO ratings(rater_id, post_id, stars, rated_at) VALUES(1,1,4,?)", (t,))
     await db.execute("INSERT INTO ratings(rater_id, post_id, stars, rated_at) VALUES(1,1,5,?) "
                      "ON CONFLICT (rater_id, post_id) DO UPDATE SET stars=excluded.stars", (t,))
@@ -258,3 +260,10 @@ async def test_discover_candidates_query(db):
     cands = {c.post_id: c for c in await cog.candidates(1)}
     assert cands[1].genres == {"Pop"} and cands[1].avg_rating == 5.0
     assert cands[2].boost == 2.0 and cands[2].seen_at == t
+
+
+def test_collect_interval_schedule():
+    from backline.services import collect_interval, DAY
+    assert collect_interval("youtube", 3 * DAY) == 1800
+    assert collect_interval("instagram", 3600) == 3600
+    assert collect_interval("instagram", 2 * DAY) == 6 * 3600

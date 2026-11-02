@@ -121,15 +121,29 @@ async def recruiter_stats(db: Database, min_activity: int) -> dict[int, Recruite
     return stats
 
 
-async def posts_due_for_collection(db: Database, checkpoints_hours: list[int]) -> list:
-    """Publicações que já passaram do próximo ponto de coleta."""
-    rows = await db.fetchall("SELECT * FROM posts WHERE removed = 0 AND checkpoints_done < ?",
-                             (len(checkpoints_hours),))
+COLLECT_DAYS = 7          # cada publicação é acompanhada por 7 dias
+
+
+def collect_interval(platform: str, age_seconds: int) -> int:
+    """De quanto em quanto tempo reler os comentários de uma publicação.
+    YouTube (API oficial, grátis): a cada 30 min. Instagram (pago por leitura): 1h no 1º dia, depois 6h."""
+    if platform == "youtube":
+        return 30 * 60
+    return 3600 if age_seconds < DAY else 6 * 3600
+
+
+async def posts_due_for_collection(db: Database, checkpoints_hours: list[int] | None = None) -> list:
+    """Publicações (não demo) dos últimos 7 dias cuja próxima leitura já venceu."""
     ts = now()
+    rows = await db.fetchall("SELECT * FROM posts WHERE removed = 0 AND created_at >= ? "
+                             "AND external_id NOT LIKE 'demo-%'", (ts - COLLECT_DAYS * DAY - 6 * 3600,))
     due = []
     for row in rows:
-        idx = row["checkpoints_done"]
-        if ts >= row["created_at"] + checkpoints_hours[idx] * 3600:
+        age = ts - row["created_at"]
+        last = row["last_collected"] or 0
+        if age > COLLECT_DAYS * DAY and last >= row["created_at"] + COLLECT_DAYS * DAY:
+            continue   # leitura final já feita
+        if ts - last >= collect_interval(row["platform"], age):
             due.append(row)
     return due
 
