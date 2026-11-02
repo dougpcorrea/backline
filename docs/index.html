@@ -35,7 +35,10 @@
   .tile:hover .play { opacity:1; }
   .viewed { position:absolute; top:8px; right:8px; background:var(--green); color:#fff; font-size:12px;
     font-weight:700; letter-spacing:.04em; padding:4px 8px; border-radius:8px; }
-  .tile.seen .cover img, .tile.seen .ph { filter:brightness(.45) saturate(.6); }
+  .cover img.pf { position:absolute; inset:auto 8px 8px auto; width:clamp(20px,3.2vh,30px); height:clamp(20px,3.2vh,30px);
+    object-fit:contain; border-radius:6px; filter:drop-shadow(0 1px 3px rgba(0,0,0,.6)); z-index:2; }
+  .tile.seen .cover img.pf { filter:drop-shadow(0 1px 3px rgba(0,0,0,.6)); opacity:.8; }
+  .tile.seen .cover img:not(.pf), .tile.seen .ph { filter:brightness(.45) saturate(.6); }
   .ph { position:absolute; inset:0; display:grid; place-items:center; font-size:22px; color:#fff; }
   .ph.youtube { background:linear-gradient(135deg,#8c0021,#3c0010); }
   .ph.tiktok { background:linear-gradient(135deg,#0f6e70,#7a1530); }
@@ -68,6 +71,6 @@
   <div class="bar"><div id="progress"></div></div>
   <section id="grid"><p class="empty">Loading…</p></section>
 </main>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
