@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Backline Discover</title>
+<style>
+  :root { --bg:#111214; --card:#1e1f22; --text:#f2f3f5; --muted:#a3a6ac; --green:#3ba55d; --amber:#f0b232; --accent:#5865f2; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:var(--bg); color:var(--text);
+    font-family:"gg sans","Noto Sans","Helvetica Neue",Helvetica,Arial,sans-serif; }
+  main { max-width:1100px; margin:0 auto; padding:22px 18px 28px; }
+  header { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:16px; }
+  h1 { margin:0; font-size:24px; }
+  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
+  #more { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 14px;
+    font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  #more:hover { filter:brightness(1.1); }
+  #grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .tile { all:unset; cursor:pointer; background:var(--card); border-radius:12px; overflow:hidden;
+    display:flex; flex-direction:column; transition:transform .12s ease, box-shadow .12s ease; }
+  .tile:hover, .tile:focus-visible { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.45); }
+  .cover { position:relative; aspect-ratio:10/7; background:#000; overflow:hidden; }
+  .cover img { width:100%; height:100%; object-fit:cover; display:block; }
+  .num { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.85); border-radius:8px;
+    min-width:30px; height:30px; display:grid; place-items:center; font-weight:600; font-size:15px; }
+  .play { position:absolute; inset:0; display:grid; place-items:center; font-size:46px; color:#fff;
+    background:rgba(0,0,0,.35); opacity:0; transition:opacity .12s ease; }
+  .tile:hover .play { opacity:1; }
+  .ph { width:100%; height:100%; display:grid; place-items:center; font-size:26px; color:#fff; }
+  .ph.youtube { background:linear-gradient(135deg,#8c0021,#3c0010); }
+  .ph.tiktok { background:linear-gradient(135deg,#0f6e70,#7a1530); }
+  .ph.instagram { background:linear-gradient(135deg,#5b2c86,#8c1520); }
+  .meta { padding:12px 14px 14px; }
+  .title { font-size:17px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sub { margin-top:4px; color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { margin-top:7px; color:var(--green); font-size:13px; display:flex; align-items:center; gap:6px; }
+  .badge i { width:8px; height:8px; border-radius:50%; background:currentColor; display:inline-block; }
+  .badge.new { color:var(--amber); }
+  .empty { color:var(--muted); grid-column:1/-1; text-align:center; padding:40px 0; }
+  footer { margin-top:14px; color:var(--muted); font-size:12px; text-align:center; }
+  @media (max-width:720px) { #grid { grid-template-columns:repeat(2, 1fr); } h1 { font-size:20px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>🧭 Discover</h1>
+      <p>Tap a track to listen — then leave some love: watch, like, comment, follow.</p>
+    </div>
+    <button id="more" hidden>🔄 Next 6</button>
+  </header>
+  <section id="grid"><p class="empty">Loading…</p></section>
+  <footer>Backline · independent artists supporting each other</footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,8 +1,8 @@
-"""#discover: grade com 6 trabalhos da comunidade escolhidos para cada membro.
+"""#discover: grade de trabalhos da comunidade.
 
-Funcionamento: o membro clica em Discover e recebe uma imagem 3×2 com 6 sugestões e 6 botões numerados.
-Cada botão abre o link da publicação (e marca como aberta). Quando as 6 forem abertas, a grade
-troca sozinha pelas próximas 6. A seleção fica guardada: fechar e voltar não sorteia de novo.
+No canal fica uma prévia da grade (galeria de quadros com capa + título/artista/nível) e o botão
+"Open Discover", que abre a Activity (mini-app dentro do Discord, pasta docs/) onde cada quadro é clicável.
+O bot publica os dados da Activity (discover.json + capas) num bucket público do Supabase Storage.
 """
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ BATCH = 6
 POOL_DAYS = 90          # publicações mais antigas que isso saem do Discover
 META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velhas
 PUBLIC_REFRESH_HOURS = 3
+DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
+BUCKET = "backline"
 ACCENT = 0x5865F2
 
 
@@ -33,19 +35,16 @@ def _md(text: str) -> str:
 
 def build_layout(tiles: list[Tile], posts: list[dict], header: str, button: discord.ui.Button,
                  view: discord.ui.LayoutView) -> list[discord.File]:
-    """Texto do topo, galeria 3×2 (cada quadro já traz título/artista/nível embaixo da capa),
-    uma linha com os links para ouvir e o botão."""
+    """Texto do topo, galeria 3×2 (cada quadro já traz título/artista/nível embaixo da capa) e o botão."""
     files: list[discord.File] = []
     items = []
     for t in tiles:
         name = f"track_{t.number}.png"
         files.append(discord.File(io.BytesIO(render_tile(t)), filename=name))
         items.append(discord.MediaGalleryItem(f"attachment://{name}", description=t.title[:100]))
-    listen = "   ".join(f"[▶ {t.number}]({p['url']})" for t, p in zip(tiles, posts))
     container = discord.ui.Container(
         discord.ui.TextDisplay(header),
         discord.ui.MediaGallery(*items),
-        discord.ui.TextDisplay(f"### {listen}"),
         discord.ui.Separator(),
         discord.ui.ActionRow(button),
         accent_colour=ACCENT)
@@ -54,19 +53,21 @@ def build_layout(tiles: list[Tile], posts: list[dict], header: str, button: disc
 
 
 class PublicView(discord.ui.LayoutView):
-    """Botão "Picks for you" da grade pública (persistente)."""
+    """Botão "Open Discover" da grade do canal (persistente): abre a Activity."""
 
     def __init__(self, bot, cog=None):
         super().__init__(timeout=None)
         self.bot = bot
-        self.button = discord.ui.Button(label="Picks for you", emoji="🎧", style=discord.ButtonStyle.primary,
-                                        custom_id="bl:discover")
+        self.button = discord.ui.Button(label="Open Discover — tap a track to listen", emoji="🎧",
+                                        style=discord.ButtonStyle.primary, custom_id="bl:discover")
         self.button.callback = self.on_click
 
     async def on_click(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer(ephemeral=True, thinking=True)
-        view, files = await self.bot.get_cog("Discover").personal(interaction.user.id)
-        await interaction.followup.send(view=view, files=files, ephemeral=True)
+        try:
+            await interaction.response.launch_activity()
+        except discord.HTTPException:
+            await interaction.response.send_message(
+                "Discover is warming up — try again in a minute!", ephemeral=True)
 
 
 class PersonalView(discord.ui.LayoutView):
@@ -250,10 +251,9 @@ class Discover(commands.Cog):
         posts = await self.public_posts()
         view = PublicView(self.bot)
         header = ("# 🧭 Discover\n"
-                  "Fresh tracks from independent artists in the Backline community — refreshed every "
-                  f"{PUBLIC_REFRESH_HOURS} hours.\n"
-                  "Tap **▶ number** below the grid to listen, and leave some love: watch, like, comment, follow.\n"
-                  "Want picks matched to your taste? Press **Picks for you**.")
+                  "Fresh tracks from independent artists in the Backline community.\n"
+                  "Press **Open Discover** and tap any track to listen — then leave some love: "
+                  "watch, like, comment, follow.")
         if posts:
             tiles = await self._tiles(posts)
             files = await asyncio.get_running_loop().run_in_executor(
@@ -263,6 +263,10 @@ class Discover(commands.Cog):
             view.add_item(discord.ui.Container(discord.ui.TextDisplay(
                 header + "\n\n*No tracks yet — be the first to share yours in the post channel!*"),
                 discord.ui.ActionRow(view.button), accent_colour=ACCENT))
+        try:
+            await self.publish_data()
+        except Exception as e:  # noqa: BLE001
+            await self.bot.log_admin(f"⚠️ Dados do Discover (Activity) não publicados: `{str(e)[:300]}`")
         mid = await db.get_int_setting("msg_discover_public")
         if mid:
             try:
@@ -273,7 +277,52 @@ class Discover(commands.Cog):
         msg = await channel.send(view=view, files=files)
         await db.set_setting("msg_discover_public", msg.id)
 
-    @tasks.loop(hours=PUBLIC_REFRESH_HOURS)
+    # ---------- dados da Activity (Supabase Storage público) ----------
+    def _supabase(self) -> tuple[str, dict]:
+        import json as _json
+        cfg = _json.load(open(self.bot.cfg.supabase_config))
+        key = cfg["supabaseChave"]
+        return cfg["supabaseUrl"].rstrip("/"), {"apikey": key, "Authorization": f"Bearer {key}"}
+
+    async def _upload(self, base: str, headers: dict, path: str, data: bytes, ctype: str) -> None:
+        h = dict(headers, **{"x-upsert": "true", "Content-Type": ctype, "cache-control": "max-age=60"})
+        async with self.bot.session.post(f"{base}/storage/v1/object/{BUCKET}/{path}", data=data, headers=h) as r:
+            if r.status >= 300:
+                raise RuntimeError(f"upload {path}: {r.status} {(await r.text())[:150]}")
+
+    async def publish_data(self) -> None:
+        import json as _json
+        from PIL import Image
+        base, headers = self._supabase()
+        async with self.bot.session.post(f"{base}/storage/v1/bucket", headers=headers,
+                                         json={"id": BUCKET, "name": BUCKET, "public": True}) as r:
+            if r.status >= 300 and r.status not in (400, 409):
+                raise RuntimeError(f"bucket: {r.status} {(await r.text())[:150]}")
+        db = self.bot.db
+        chosen = pick(await self.candidates(0), Viewer(user_id=0, genres=set()), now(), n=DATA_POOL,
+                      rng=random.Random())
+        posts = [dict(await db.fetchone("SELECT * FROM posts WHERE id=?", (c.post_id,))) for c in chosen]
+        tiles = await self._tiles(posts)
+        out = []
+        for t, p in zip(tiles, posts):
+            cover = None
+            if t.cover:
+                try:
+                    img = Image.open(io.BytesIO(t.cover)).convert("RGB")
+                    img.thumbnail((720, 720))
+                    buf = io.BytesIO()
+                    img.save(buf, "JPEG", quality=85)
+                    cover = f"covers/{p['id']}.jpg"
+                    await self._upload(base, headers, cover, buf.getvalue(), "image/jpeg")
+                except Exception:  # noqa: BLE001
+                    cover = None
+            out.append({"id": p["id"], "title": t.title, "artist": t.artist, "genre": t.genre, "badge": t.badge,
+                        "new": t.badge.lower().startswith("new"), "platform": p["platform"],
+                        "platform_name": PLATFORM_NAME[p["platform"]], "url": p["url"], "cover": cover})
+        payload = _json.dumps({"updated_at": now(), "tracks": out}).encode()
+        await self._upload(base, headers, "discover.json", payload, "application/json")
+
+    @tasks.loop(minutes=30)
     async def public_loop(self) -> None:
         try:
             await self.refresh_public()
