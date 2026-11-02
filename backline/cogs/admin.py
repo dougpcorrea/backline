@@ -367,6 +367,42 @@ class Admin(commands.Cog):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    @admin.command(name="post-edit", description="Editar uma publicação: original/cover, título e gêneros")
+    @app_commands.describe(post_id="Número da publicação (aparece no /admin collect)",
+                           kind="original ou cover", title="Novo título (vazio = mantém)",
+                           genres="Gêneros separados por vírgula, ex.: Latin, Pop (vazio = mantém)")
+    async def post_edit(self, interaction: discord.Interaction, post_id: int,
+                        kind: Literal["original", "cover"] | None = None, title: str | None = None,
+                        genres: str | None = None) -> None:
+        db = self.bot.db
+        post = await db.fetchone("SELECT * FROM posts WHERE id=?", (post_id,))
+        if not post:
+            await interaction.response.send_message("Publicação não encontrada.", ephemeral=True)
+            return
+        changes = []
+        if kind:
+            await db.execute("UPDATE posts SET kind=? WHERE id=?", (kind, post_id))
+            changes.append(f"tipo: **{kind}**")
+        if title:
+            await db.execute("UPDATE posts SET title=? WHERE id=?", (title.strip()[:80], post_id))
+            changes.append(f"título: **{title.strip()[:80]}**")
+        if genres:
+            valid = [g for g in (x.strip() for x in genres.split(",")) if g in self.bot.cfg.genres][:3]
+            if not valid:
+                await interaction.response.send_message(
+                    f"Nenhum gênero válido. Válidos: {', '.join(self.bot.cfg.genres)}", ephemeral=True)
+                return
+            await db.execute("UPDATE posts SET genres=? WHERE id=?", (",".join(valid), post_id))
+            changes.append(f"gêneros: **{', '.join(valid)}**")
+        if not changes:
+            await interaction.response.send_message("Nada para mudar.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"✏️ Publicação #{post_id} atualizada — " + "; ".join(changes),
+                                                ephemeral=True)
+        disc = self.bot.get_cog("Discover")
+        if disc:
+            await disc.publish_data()
+
     @admin.command(name="scores", description="Tabela de participação: dado, recebido, conta e nível de cada membro")
     async def scores(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)

@@ -29,6 +29,7 @@ class OneOff(commands.Cog):
             await self.refetch_instagram_meta()
             await self.drop_tiktok()
             await self.update_reputation_text()
+            await self.mark_cover()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -65,6 +66,18 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def mark_cover(self) -> None:
+        """Publicação "Olhos nos Olhos" do Douglas (Instagram DfK4XMTvbYl) é um cover."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_cover_DfK4XMTvbYl"):
+            return
+        await db.set_setting("oneoff_cover_DfK4XMTvbYl", "1")
+        await db.execute("UPDATE posts SET kind='cover' WHERE platform='instagram' AND external_id='DfK4XMTvbYl'")
+        disc = self.bot.get_cog("Discover")
+        if disc:
+            await disc.publish_data()
+        await self.bot.log_admin("🎤 Publicação \"Olhos nos Olhos\" marcada como **Cover**.")
 
     async def update_reputation_text(self) -> None:
         """Seção 02 do #start-here nova (verificação a cada 30 min + Discover só Lv.3+), também no texto editado."""
