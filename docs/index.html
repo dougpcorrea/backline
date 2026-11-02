@@ -7,45 +7,53 @@
 <style>
   :root { --bg:#111214; --card:#1e1f22; --text:#f2f3f5; --muted:#a3a6ac; --green:#3ba55d; --amber:#f0b232; --accent:#5865f2; }
   * { box-sizing:border-box; }
-  html, body { margin:0; background:var(--bg); color:var(--text);
+  html, body { margin:0; height:100%; overflow:hidden; background:var(--bg); color:var(--text);
     font-family:"gg sans","Noto Sans","Helvetica Neue",Helvetica,Arial,sans-serif; }
-  main { max-width:1100px; margin:0 auto; padding:22px 18px 28px; }
-  header { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:16px; }
-  h1 { margin:0; font-size:24px; }
-  header p { margin:4px 0 0; color:var(--muted); font-size:14px; }
-  #more { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 14px;
-    font-size:14px; font-weight:600; cursor:pointer; white-space:nowrap; }
+  /* tudo cabe na altura da janela: cabeçalho fixo + grade que ocupa o resto */
+  main { height:100vh; display:flex; flex-direction:column; padding:clamp(8px,2vh,20px) clamp(10px,2vw,24px);
+    max-width:1400px; margin:0 auto; }
+  header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:clamp(6px,1.2vh,12px); }
+  h1 { margin:0; font-size:clamp(17px,2.6vh,24px); }
+  header p { margin:2px 0 0; color:var(--muted); font-size:clamp(11px,1.6vh,14px); }
+  #more { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:clamp(6px,1vh,9px) 14px;
+    font-size:clamp(12px,1.6vh,14px); font-weight:600; cursor:pointer; white-space:nowrap; }
   #more:hover:not(:disabled) { filter:brightness(1.1); }
   #more:disabled { background:#3a3c42; color:#b5bac1; cursor:not-allowed; }
-  .bar { height:4px; background:#2b2d31; border-radius:4px; margin:0 0 14px; overflow:hidden; }
+  .bar { flex:none; height:4px; background:#2b2d31; border-radius:4px; margin:0 0 clamp(6px,1.2vh,12px); overflow:hidden; }
   #progress { height:100%; width:0; background:var(--green); transition:width .25s ease; }
-  .tile.seen .cover img, .tile.seen .ph { filter:brightness(.45) saturate(.6); }
-  .viewed { position:absolute; top:10px; right:10px; background:var(--green); color:#fff; font-size:12px;
-    font-weight:700; letter-spacing:.04em; padding:5px 9px; border-radius:8px; }
-  #grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
-  .tile { all:unset; cursor:pointer; background:var(--card); border-radius:12px; overflow:hidden;
+  #grid { flex:1; min-height:0; display:grid; gap:clamp(6px,1.2vh,12px);
+    grid-template-columns:repeat(3, minmax(0,1fr)); grid-template-rows:repeat(2, minmax(0,1fr)); }
+  .tile { all:unset; cursor:pointer; background:var(--card); border-radius:12px; overflow:hidden; min-height:0;
     display:flex; flex-direction:column; transition:transform .12s ease, box-shadow .12s ease; }
   .tile:hover, .tile:focus-visible { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.45); }
-  .cover { position:relative; aspect-ratio:10/7; background:#000; overflow:hidden; }
-  .cover img { width:100%; height:100%; object-fit:cover; display:block; }
-  .num { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.85); border-radius:8px;
-    min-width:30px; height:30px; display:grid; place-items:center; font-weight:600; font-size:15px; }
-  .play { position:absolute; inset:0; display:grid; place-items:center; font-size:46px; color:#fff;
+  .cover { position:relative; flex:1; min-height:0; background:#000; overflow:hidden; }
+  .cover img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+  .num { position:absolute; top:8px; left:8px; background:rgba(0,0,0,.85); border-radius:8px;
+    min-width:28px; height:28px; display:grid; place-items:center; font-weight:600; font-size:14px; }
+  .play { position:absolute; inset:0; display:grid; place-items:center; font-size:42px; color:#fff;
     background:rgba(0,0,0,.35); opacity:0; transition:opacity .12s ease; }
   .tile:hover .play { opacity:1; }
-  .ph { width:100%; height:100%; display:grid; place-items:center; font-size:26px; color:#fff; }
+  .viewed { position:absolute; top:8px; right:8px; background:var(--green); color:#fff; font-size:12px;
+    font-weight:700; letter-spacing:.04em; padding:4px 8px; border-radius:8px; }
+  .tile.seen .cover img, .tile.seen .ph { filter:brightness(.45) saturate(.6); }
+  .ph { position:absolute; inset:0; display:grid; place-items:center; font-size:22px; color:#fff; }
   .ph.youtube { background:linear-gradient(135deg,#8c0021,#3c0010); }
   .ph.tiktok { background:linear-gradient(135deg,#0f6e70,#7a1530); }
   .ph.instagram { background:linear-gradient(135deg,#5b2c86,#8c1520); }
-  .meta { padding:12px 14px 14px; }
-  .title { font-size:17px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .sub { margin-top:4px; color:var(--muted); font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .badge { margin-top:7px; color:var(--green); font-size:13px; display:flex; align-items:center; gap:6px; }
+  .meta { flex:none; padding:clamp(6px,1.2vh,12px) 12px clamp(7px,1.3vh,13px); }
+  .title { font-size:clamp(13px,2vh,17px); font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sub { margin-top:2px; color:var(--muted); font-size:clamp(11px,1.5vh,13px); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .badge { margin-top:4px; color:var(--green); font-size:clamp(11px,1.5vh,13px); display:flex; align-items:center; gap:6px; }
   .badge i { width:8px; height:8px; border-radius:50%; background:currentColor; display:inline-block; }
   .badge.new { color:var(--amber); }
-  .empty { color:var(--muted); grid-column:1/-1; text-align:center; padding:40px 0; }
-  footer { margin-top:14px; color:var(--muted); font-size:12px; text-align:center; }
-  @media (max-width:720px) { #grid { grid-template-columns:repeat(2, 1fr); } h1 { font-size:20px; } }
+  .empty { color:var(--muted); grid-column:1/-1; grid-row:1/-1; text-align:center; align-self:center; }
+  /* janela estreita/em pé (celular): 2 colunas × 3 linhas */
+  @media (max-aspect-ratio: 1/1) {
+    #grid { grid-template-columns:repeat(2, minmax(0,1fr)); grid-template-rows:repeat(3, minmax(0,1fr)); }
+    header p { display:none; }
+  }
+  /* janela muito baixa: esconde o subtítulo da faixa para sobrar espaço para a capa */
+  @media (max-height: 420px) { .sub { display:none; } header p { display:none; } }
 </style>
 </head>
 <body>
@@ -59,8 +67,7 @@
   </header>
   <div class="bar"><div id="progress"></div></div>
   <section id="grid"><p class="empty">Loading…</p></section>
-  <footer>Backline · independent artists supporting each other</footer>
 </main>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
