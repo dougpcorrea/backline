@@ -27,7 +27,14 @@ PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
 DISCOVER_MSG_VERSION = "5"
-MIN_DISCOVER_LEVEL = 3   # suba quando mudar o texto da mensagem do #discover
+MIN_DISCOVER_LEVEL = 3
+MIN_MEMBERS_FOR_LEVEL_RULE = 20   # a regra do Lv.3 só vale quando o servidor tiver pelo menos 20 membros
+
+
+async def level_rule_active(db) -> bool:
+    row = await db.fetchone("SELECT COUNT(*) AS n FROM members WHERE verified_at IS NOT NULL AND left_at IS NULL "
+                            "AND COALESCE(is_test, 0) = 0 AND demo_name IS NULL")
+    return bool(row) and row["n"] >= MIN_MEMBERS_FOR_LEVEL_RULE   # suba quando mudar o texto da mensagem do #discover
 ACCENT = 0x5865F2
 
 
@@ -137,8 +144,9 @@ class Discover(commands.Cog):
                                    "JOIN posts p ON p.id = r.post_id GROUP BY p.user_id"):
             avg[r["user_id"]] = float(r["a"])
         out = []
+        rule = await level_rule_active(db)
         for p in posts:
-            if (p["manual_level"] or p["level"] or 0) < MIN_DISCOVER_LEVEL:
+            if rule and (p["manual_level"] or p["level"] or 0) < MIN_DISCOVER_LEVEL:
                 continue   # regra: só artistas Lv.3+ aparecem no Discover
             boost = p["multiplier"] if p["multiplier"] and (not p["until"] or p["until"] > t) else 1.0
             out.append(Candidate(post_id=p["id"], user_id=p["user_id"], created_at=p["created_at"],

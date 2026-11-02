@@ -145,7 +145,8 @@ class Feed(commands.Cog):
         lvl = await db.fetchone("SELECT s.level, m.manual_level FROM members m LEFT JOIN scores s "
                                 "ON s.user_id=m.user_id WHERE m.user_id=?", (user.id,))
         level = (lvl and (lvl["manual_level"] or lvl["level"])) or 0
-        if level < 3:
+        from .discover import level_rule_active
+        if level < 3 and await level_rule_active(db):
             return ("✅ Your post is saved! It will show up in Discover as soon as you reach **Lv.3** — "
                     "comment on other members' posts to get there (the bot checks every 30 minutes).")
         return t("post_ok", lang, channel=await bot.channel_mention("discover"))
