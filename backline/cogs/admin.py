@@ -211,11 +211,19 @@ class Admin(commands.Cog):
         await interaction.followup.send(f"✅ {member.mention} liberado sem verificação ({'; '.join(notes) or 'só membro'}).\n"
                                         f"Gêneros válidos: {', '.join(bot.cfg.genres)}", ephemeral=True)
 
-    @admin.command(name="update", description="Instalar a versão nova publicada no Supabase e reiniciar o bot")
-    async def update(self, interaction: discord.Interaction) -> None:
+    @admin.command(name="update", description="Instalar agora a versão mais recente e reiniciar o bot")
+    @app_commands.describe(source="github (padrão) ou supabase (pacote antigo)")
+    async def update(self, interaction: discord.Interaction,
+                     source: Literal["github", "supabase"] = "github") -> None:
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
-            msg = await self._install_package()
+            if source == "github":
+                msg = await self._github_update(force=True)
+                if msg is None:
+                    await interaction.followup.send("✅ O bot já está na versão mais recente do GitHub.", ephemeral=True)
+                    return
+            else:
+                msg = await self._install_package()
         except Exception as e:  # noqa: BLE001
             await interaction.followup.send(f"❌ Atualização falhou: `{str(e)[:400]}`", ephemeral=True)
             return
@@ -274,34 +282,41 @@ class Admin(commands.Cog):
                 return None
             return await r.json()
 
-    @tasks.loop(minutes=5)
-    async def auto_update(self) -> None:
+    async def _github_update(self, force: bool = False) -> str | None:
+        """Instala a versão mais nova do GitHub. Retorna a mensagem, ou None se não havia nada novo."""
         repo = await self.bot.db.get_setting("update_repo") or self.bot.cfg.update_repo
         if not repo or repo == "off":
-            return
-        branch = self.bot.cfg.update_branch
-        try:
-            head = await self._github_head(repo, branch)
-            if not head:
-                return
-            sha = head["sha"]
-            installed = await self.bot.db.get_setting("installed_sha")
-            if installed is None:
-                # primeira vez: só registra a versão atual (o código já veio pelo Supabase)
-                await self.bot.db.set_setting("installed_sha", sha)
-                return
-            if sha == installed:
-                return
-            async with self.bot.session.get(f"https://codeload.github.com/{repo}/tar.gz/{sha}") as r:
-                r.raise_for_status()
-                raw = await r.read()
-            await self._install_bytes(raw)
+            raise RuntimeError("atualização pelo GitHub desligada")
+        head = await self._github_head(repo, self.bot.cfg.update_branch)
+        if not head:
+            raise RuntimeError(f"não consegui ler o repositório {repo}")
+        sha = head["sha"]
+        installed = await self.bot.db.get_setting("installed_sha")
+        if installed is None and not force:
+            # primeira vez: só registra a versão atual (o código já veio pelo Supabase)
             await self.bot.db.set_setting("installed_sha", sha)
-            msg = head.get("commit", {}).get("message", "").splitlines()[0][:200]
-            await self.bot.log_admin(f"🔄 Atualização automática instalada (`{sha[:7]}`): {msg}")
+            return None
+        if sha == installed:
+            return None
+        async with self.bot.session.get(f"https://codeload.github.com/{repo}/tar.gz/{sha}") as r:
+            r.raise_for_status()
+            raw = await r.read()
+        await self._install_bytes(raw)
+        await self.bot.db.set_setting("installed_sha", sha)
+        msg = head.get("commit", {}).get("message", "").splitlines()[0][:200]
+        return f"✅ Versão `{sha[:7]}` instalada: {msg}"
+
+    @tasks.loop(minutes=5)
+    async def auto_update(self) -> None:
+        try:
+            msg = await self._github_update()
         except Exception as e:  # noqa: BLE001
-            await self.bot.log_admin(f"⚠️ Atualização automática falhou: `{str(e)[:300]}`")
+            if "não consegui ler" not in str(e) and "desligada" not in str(e):
+                await self.bot.log_admin(f"⚠️ Atualização automática falhou: `{str(e)[:300]}`")
             return
+        if not msg:
+            return
+        await self.bot.log_admin(f"🔄 Atualização automática. {msg}")
         asyncio.get_running_loop().call_later(2, lambda: os.execv(sys.executable,
                                                                   [sys.executable, "-m", "backline.bot"]))
 
