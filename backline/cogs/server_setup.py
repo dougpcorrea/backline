@@ -15,6 +15,7 @@ from .community import SuggestionsView, suggestions_embed
 from .feed import PostPanelView
 from .mutual import Mutual, MutualPanelView
 from .onboarding import JoinView
+from .ratings import PANEL_TEXT as RATINGS_TEXT, RatingsPanel
 
 MEMBER_ROLE = "Backline Member"
 RECRUITER_ROLE = "🛡️ Recruiter"
@@ -22,7 +23,7 @@ FOUNDER_ROLE = "🌟 Founder Member"
 FOUNDER_LIMIT = 100   # os primeiros 100 membros verificados viram fundadores
 MUTUAL_ROLE = "🤝 Mutual Follow"
 CATEGORY = "🎸 BACKLINE"
-SETUP_VERSION = "9"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
+SETUP_VERSION = "10"  # suba quando mudar canais/cargos/painéis: o bot reaplica sozinho ao reiniciar
 COMMUNITY_CATEGORY = "💬 COMMUNITY"
 VOICE_CATEGORY = "🎙️ VOICE"
 COLLAB_FORUM = "🎼・collabs"
@@ -49,6 +50,7 @@ CHANNELS = [
     ("start", "👋・start-here", "everyone", False, "main"),
     ("post", "📤・post-here", "member", False, "main"),
     ("discover", "🧭・discover", "member", False, "main"),
+    ("ratings", "⭐・artist-ratings", "member", False, "main"),
     ("ranking", "🏆・ranking", "member", False, "main"),
     ("mutual", "🤝・mutual-follow", "member", False, "main"),
     ("recruiters", "🛡️・recruiters-lounge", "recruiter", True, "main"),
@@ -137,7 +139,7 @@ class ServerSetup(commands.Cog):
 
     async def refresh_welcome(self, guild: discord.Guild) -> None:
         """Redesenha o painel do #start-here com o texto salvo (/admin welcome) ou o padrão."""
-        chans = {k: await self.bot.channel(k) for k in ("start", "post", "discover", "mutual")}
+        chans = {k: await self.bot.channel(k) for k in ("start", "post", "discover", "mutual", "ratings")}
         if not chans["start"]:
             return
         jump = lambda ch: f"https://discord.com/channels/{guild.id}/{ch.id}"  # noqa: E731
@@ -340,6 +342,8 @@ class ServerSetup(commands.Cog):
                                  description=bi("post_panel_desc", n=cfg.posts_per_week), colour=0x5865F2)
             await self._panel("post", chans["post"], post, PostPanelView(self.bot))
             await self._panel("mutual", chans["mutual"], Mutual.panel_embed(), MutualPanelView(self.bot))
+            await self._panel("ratings", chans["ratings"],
+                              discord.Embed(description=RATINGS_TEXT, colour=0xF0B232), RatingsPanel(self.bot))
 
             part = self.bot.get_cog("Participation")
             if part:

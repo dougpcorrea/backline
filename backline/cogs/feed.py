@@ -74,6 +74,64 @@ class Feed(commands.Cog):
     async def post_cmd(self, interaction: discord.Interaction) -> None:
         await open_post_modal(self.bot, interaction)
 
+    async def validate_link(self, user, member, raw_url: str, lang: str, check_duplicate: bool = True):
+        """Confere se o link é de uma publicação real, pública, do Instagram/YouTube, da conta verificada do membro.
+        Devolve (erro ou None, link, detalhes)."""
+        bot, db = self.bot, self.bot.db
+        state: dict = {}
+
+        async def check():
+            url = raw_url.strip()
+            if is_short_tiktok(url):
+                url = await bot.collectors.resolve_redirect(url if "://" in url else "https://" + url)
+            link = parse_post_url(url)
+            state['link'] = link
+            if not link:
+                return ("❌ That doesn't look like a post link. Paste the link of a specific **Instagram post/reel** "
+                        "or **YouTube video/short** — not a profile or channel link.")
+            if link.platform not in ("instagram", "youtube"):
+                return "❌ Backline works with **Instagram** and **YouTube** posts only."
+            tester = bool(member["is_test"]) and not member["demo_name"]
+
+            handle = await db.fetchone("SELECT * FROM handles WHERE user_id=? AND platform=? AND verified=1",
+                                       (user.id, link.platform))
+            if not handle:
+                return t("err_platform_not_verified", lang, platform=PLATFORM_NAME[link.platform],
+                         channel=await bot.channel_mention("start"))
+
+            # Confere se a publicação é do próprio membro (quando a plataforma permite)
+            if link.platform == "tiktok" and link.owner_hint and link.owner_hint != handle["handle"]:
+                return t("err_not_owner", lang, platform="TikTok", handle=handle["handle"])
+            if link.platform == "youtube" and handle["external_id"]:
+                try:
+                    channel_id = await bot.collectors.youtube_video_channel(link.external_id)
+                except CollectorError:
+                    channel_id = handle["external_id"]  # API fora do ar: não bloqueia o membro
+                if channel_id != handle["external_id"]:
+                    return t("err_not_owner", lang, platform="YouTube", handle=handle["handle"])
+
+            if check_duplicate and await db.fetchone("SELECT id FROM posts WHERE platform=? AND external_id=?",
+                                                     (link.platform, link.external_id)):
+                return t("err_duplicate", lang)
+
+            # a publicação existe mesmo? (e, no Instagram, é da conta verificada?)
+            details = {"found": None, "title": None, "thumb": None, "owner": None}
+            state['details'] = details
+            if not tester:
+                details = await bot.collectors.post_details(link.platform, link.url, link.external_id)
+                state['details'] = details
+                if details["found"] is False:
+                    return (f"❌ I couldn't find that {PLATFORM_NAME[link.platform]} post. Check the link and make sure "
+                            "the post is **public**.")
+                if (link.platform in ("instagram", "tiktok") and details["owner"]
+                        and details["owner"] != handle["handle"].lower()):
+                    return t("err_not_owner", lang, platform=PLATFORM_NAME[link.platform], handle=handle["handle"])
+            return None
+
+        err = await check()
+        return err, state.get("link"), state.get("details") or {"found": None, "title": None, "thumb": None,
+                                                                "owner": None}
+
     async def submit(self, user: discord.abc.User, raw_url: str, lang: str, title: str | None = None,
                      kind: str = "original", genres: list[str] | None = None) -> str:
         bot, db = self.bot, self.bot.db
@@ -81,48 +139,9 @@ class Feed(commands.Cog):
         if not member or not member["verified_at"]:
             return t("err_not_verified", lang, channel=await bot.channel_mention("start"))
 
-        url = raw_url.strip()
-        if is_short_tiktok(url):
-            url = await bot.collectors.resolve_redirect(url if "://" in url else "https://" + url)
-        link = parse_post_url(url)
-        if not link:
-            return ("❌ That doesn't look like a post link. Paste the link of a specific **Instagram post/reel** "
-                    "or **YouTube video/short** — not a profile or channel link.")
-        if link.platform not in ("instagram", "youtube"):
-            return "❌ Backline works with **Instagram** and **YouTube** posts only."
-        tester = bool(member["is_test"]) and not member["demo_name"]
-
-        handle = await db.fetchone("SELECT * FROM handles WHERE user_id=? AND platform=? AND verified=1",
-                                   (user.id, link.platform))
-        if not handle:
-            return t("err_platform_not_verified", lang, platform=PLATFORM_NAME[link.platform],
-                     channel=await bot.channel_mention("start"))
-
-        # Confere se a publicação é do próprio membro (quando a plataforma permite)
-        if link.platform == "tiktok" and link.owner_hint and link.owner_hint != handle["handle"]:
-            return t("err_not_owner", lang, platform="TikTok", handle=handle["handle"])
-        if link.platform == "youtube" and handle["external_id"]:
-            try:
-                channel_id = await bot.collectors.youtube_video_channel(link.external_id)
-            except CollectorError:
-                channel_id = handle["external_id"]  # API fora do ar: não bloqueia o membro
-            if channel_id != handle["external_id"]:
-                return t("err_not_owner", lang, platform="YouTube", handle=handle["handle"])
-
-        if await db.fetchone("SELECT id FROM posts WHERE platform=? AND external_id=?",
-                             (link.platform, link.external_id)):
-            return t("err_duplicate", lang)
-
-        # a publicação existe mesmo? (e, no Instagram, é da conta verificada?)
-        details = {"found": None, "title": None, "thumb": None, "owner": None}
-        if not tester:
-            details = await bot.collectors.post_details(link.platform, link.url, link.external_id)
-            if details["found"] is False:
-                return (f"❌ I couldn't find that {PLATFORM_NAME[link.platform]} post. Check the link and make sure "
-                        "the post is **public**.")
-            if (link.platform in ("instagram", "tiktok") and details["owner"]
-                    and details["owner"] != handle["handle"].lower()):
-                return t("err_not_owner", lang, platform=PLATFORM_NAME[link.platform], handle=handle["handle"])
+        err, link, details = await self.validate_link(user, member, raw_url, lang, check_duplicate=True)
+        if err:
+            return err
 
         recent = await posts_in_last_week(db, user.id)
         limit = bot.cfg.posts_per_week

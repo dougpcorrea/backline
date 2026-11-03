@@ -19,6 +19,7 @@ EXTENSIONS = [
     "backline.cogs.feed",
     "backline.cogs.mutual",
     "backline.cogs.discover",
+    "backline.cogs.ratings",
     "backline.cogs.community",
     "backline.cogs.demo",
     "backline.cogs.oneoff",

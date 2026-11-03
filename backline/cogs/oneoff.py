@@ -30,6 +30,7 @@ class OneOff(commands.Cog):
             await self.drop_tiktok()
             await self.update_reputation_text()
             await self.mark_cover()
+            await self.ratings_welcome()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -66,6 +67,22 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def ratings_welcome(self) -> None:
+        """Seção 04 do #start-here passa a apontar para o canal de Artist Ratings (também no texto editado)."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_ratings_welcome_v1"):
+            return
+        await db.set_setting("oneoff_ratings_welcome_v1", "1")
+        from ..welcome import SECTION_04
+        text = await db.get_setting("welcome_text")
+        if text and "### ⭐ 04" in text and "### 🚀 05" in text:
+            a, b = text.index("### ⭐ 04"), text.index("### 🚀 05")
+            await db.set_setting("welcome_text", text[:a] + SECTION_04 + text[b:])
+        setup = self.bot.get_cog("ServerSetup")
+        if setup and self.bot.guild:
+            await setup.refresh_welcome(self.bot.guild)
+        await self.bot.log_admin("⭐ #start-here atualizado: seção 04 agora aponta para o Artist Ratings.")
 
     async def mark_cover(self) -> None:
         """Publicação "Olhos nos Olhos" do Douglas (Instagram DfK4XMTvbYl) é um cover."""

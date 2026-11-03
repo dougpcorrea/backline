@@ -258,7 +258,7 @@ async def test_discover_candidates_query(db):
     b = B(); b.db = db; b.add_view = lambda v: None
     cog = Discover.__new__(Discover); cog.bot = b
     cands = {c.post_id: c for c in await cog.candidates(1)}
-    assert cands[1].genres == {"Pop"} and cands[1].avg_rating == 5.0
+    assert cands[1].genres == {"Pop"} and cands[1].avg_rating is None   # quality now comes from Artist Ratings
     assert cands[2].boost == 2.0 and cands[2].seen_at == t
 
 
@@ -267,3 +267,16 @@ def test_collect_interval_schedule():
     assert collect_interval("youtube", 3 * DAY) == 1800
     assert collect_interval("instagram", 3600) == 3600
     assert collect_interval("instagram", 2 * DAY) == 6 * 3600
+
+
+def test_rating_boost_and_adjusted():
+    from backline.scoring import adjusted, compute_level, rating_boost
+    assert rating_boost(0, 10) == 1.0
+    assert rating_boost(5, 10) == 1.25
+    assert rating_boost(20, 10) == 1.5
+    assert rating_boost(3, 0) == 1.0
+    # boost raises the level from the given/received ratio
+    assert compute_level(6, 10, 5) == 6
+    assert compute_level(6, 10, 5, boost=1.5) == 9
+    # a single 5/5 doesn't beat many consistent 4.5s
+    assert adjusted([5.0], 3.5) < adjusted([4.5] * 20, 3.5)

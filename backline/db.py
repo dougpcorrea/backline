@@ -147,6 +147,30 @@ CREATE TABLE IF NOT EXISTS ratings (
     rated_at BIGINT,
     PRIMARY KEY (rater_id, post_id)
 );
+CREATE TABLE IF NOT EXISTS rating_tracks (
+    user_id     BIGINT NOT NULL,
+    slot        INTEGER NOT NULL,
+    platform    TEXT NOT NULL,
+    url         TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    title       TEXT,
+    thumb_url   TEXT,
+    cover_path  TEXT,
+    created_at  BIGINT,
+    PRIMARY KEY (user_id, slot)
+);
+CREATE TABLE IF NOT EXISTS artist_ratings (
+    rater_id       BIGINT NOT NULL,
+    artist_id      BIGINT NOT NULL,
+    execution      INTEGER NOT NULL,
+    interpretation INTEGER NOT NULL,
+    arrangement    INTEGER NOT NULL,
+    technical      INTEGER NOT NULL,
+    feedback       TEXT,
+    rated_at       BIGINT,
+    notified       INTEGER DEFAULT 0,
+    PRIMARY KEY (rater_id, artist_id)
+);
 CREATE TABLE IF NOT EXISTS boosts (
     user_id    BIGINT PRIMARY KEY,
     multiplier REAL NOT NULL DEFAULT 1,

@@ -106,10 +106,8 @@ class Discover(commands.Cog):
         self.public_loop.cancel()
 
     async def _avg_received(self, user_id: int) -> float | None:
-        row = await self.bot.db.fetchone(
-            "SELECT AVG(r.stars) AS a, COUNT(*) AS n FROM ratings r JOIN posts p ON p.id = r.post_id "
-            "WHERE p.user_id=?", (user_id,))
-        return float(row["a"]) if row and row["n"] else None
+        rc = self.bot.get_cog("Ratings")
+        return (await rc.quality()).get(user_id) if rc else None
 
     async def _ensure_meta(self, post: dict) -> dict:
         if str(post.get("external_id", "")).startswith("demo-"):
@@ -139,10 +137,8 @@ class Discover(commands.Cog):
         genres: dict[int, set[str]] = {}
         for r in await db.fetchall("SELECT user_id, genre FROM member_genres"):
             genres.setdefault(r["user_id"], set()).add(r["genre"])
-        avg: dict[int, float] = {}
-        for r in await db.fetchall("SELECT p.user_id, AVG(r.stars) AS a FROM ratings r "
-                                   "JOIN posts p ON p.id = r.post_id GROUP BY p.user_id"):
-            avg[r["user_id"]] = float(r["a"])
+        rc = self.bot.get_cog("Ratings") if hasattr(self.bot, "get_cog") else None
+        avg: dict[int, float] = await rc.quality() if rc else {}   # nota ajustada do Artist Ratings (1 a 5)
         out = []
         rule = await level_rule_active(db)
         for p in posts:

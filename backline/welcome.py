@@ -1,7 +1,7 @@
 """Texto do canal #start-here.
 
 O texto é Markdown do Discord e pode ser editado pelo próprio dono com /admin welcome.
-Atalhos que viram links dos canais: {post}, {discover}, {mutual}.
+Atalhos que viram links dos canais: {post}, {discover}, {mutual}, {ratings}.
 """
 
 DEFAULT_TEXT = """# 🎸 Welcome to Backline
@@ -35,9 +35,9 @@ Discover artists with similar musical interests through our optional Mutual Foll
 The goal is to build meaningful networks, not collect empty follows.
 
 ### ⭐ 04 — Artist Ratings
-Our internal artist evaluation system helps identify musical styles, experience levels, and artistic quality. Members can evaluate each other's work anonymously, helping Backline provide better music discovery and more relevant artist recommendations as the community grows.
+Get an honest, anonymous read on the quality of your music in {ratings}. Submit 3 of your tracks to unlock the Ratings app, then rate other artists on four criteria — musical execution, interpretation, arrangement & creativity, and technical quality — and leave written feedback they receive anonymously.
 
--# Artist ratings and recommendation features will be introduced as they become available.
+Ratings are separate from your participation level, private, and only used to recommend music and connect artists at a similar stage. **Every artist you rate also gives your level a small boost — up to 1.5×.**
 
 ### 🚀 05 — Get Started
 🎸 **Join** — Register your Instagram and/or YouTube accounts and verify ownership using a temporary code in your bio.
@@ -46,6 +46,14 @@ Our internal artist evaluation system helps identify musical styles, experience 
 Once verified, introduce yourself, share your music, and start discovering other artists.
 
 Backline is built on a simple belief: supporting independent music should mean actually caring about the music. ❤️"""
+
+
+SECTION_04 = """### ⭐ 04 — Artist Ratings
+Get an honest, anonymous read on the quality of your music in {ratings}. Submit 3 of your tracks to unlock the Ratings app, then rate other artists on four criteria — musical execution, interpretation, arrangement & creativity, and technical quality — and leave written feedback they receive anonymously.
+
+Ratings are separate from your participation level, private, and only used to recommend music and connect artists at a similar stage. **Every artist you rate also gives your level a small boost — up to 1.5×.**
+
+"""
 
 
 def render(text: str, mentions: dict[str, str]) -> str:

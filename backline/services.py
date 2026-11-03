@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from .collectors import Comment
 from .db import Database, now
-from .scoring import compute_level, ratio_of, recruiter_score
+from .scoring import compute_level, rating_boost, ratio_of, recruiter_score
 
 DAY = 86400
 
@@ -58,6 +58,30 @@ async def post_member_commenters(db: Database, post_id: int) -> list[int]:
     return [r["commenter_id"] for r in rows]
 
 
+async def rating_pool(db: Database) -> list[int]:
+    """Artistas avaliáveis: membros ativos e verificados com as 3 publicações cadastradas no Artist Ratings."""
+    rows = await db.fetchall(
+        "SELECT t.user_id FROM rating_tracks t JOIN members m ON m.user_id = t.user_id "
+        "WHERE m.verified_at IS NOT NULL AND m.left_at IS NULL AND m.demo_name IS NULL "
+        "GROUP BY t.user_id HAVING COUNT(*) >= 3")
+    return [int(r["user_id"]) for r in rows]
+
+
+async def rating_boosts(db: Database) -> dict[int, float]:
+    """Bônus de participação por avaliar artistas: proporcional a quantos dos artistas disponíveis a pessoa avaliou."""
+    pool = set(await rating_pool(db))
+    if not pool:
+        return {}
+    out = {}
+    rated: dict[int, int] = {}
+    for r in await db.fetchall("SELECT rater_id, artist_id FROM artist_ratings"):
+        if int(r["artist_id"]) in pool:
+            rated[int(r["rater_id"])] = rated.get(int(r["rater_id"]), 0) + 1
+    for uid, n in rated.items():
+        out[uid] = rating_boost(n, len(pool) - (1 if uid in pool else 0))
+    return out
+
+
 async def compute_scores(db: Database, window_days: int, min_activity: int,
                          target_ratio: float, save: bool = True) -> dict[int, Score]:
     cutoff = now() - window_days * DAY
@@ -73,10 +97,12 @@ async def compute_scores(db: Database, window_days: int, min_activity: int,
     given = {r["uid"]: r["n"] for r in given_rows}
     received = {r["uid"]: r["n"] for r in recv_rows}
 
+    boosts = await rating_boosts(db)
     scores: dict[int, Score] = {}
     for uid in await db.verified_member_ids():
         g, r = given.get(uid, 0), received.get(uid, 0)
-        scores[uid] = Score(uid, g, r, ratio_of(g, r), compute_level(g, r, min_activity, target_ratio))
+        scores[uid] = Score(uid, g, r, ratio_of(g, r),
+                            compute_level(g, r, min_activity, target_ratio, boosts.get(uid, 1.0)))
 
     if save:
         ts = now()
