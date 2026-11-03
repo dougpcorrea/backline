@@ -201,7 +201,7 @@ class Discover(commands.Cog):
     async def _tile(self, n: int, post: dict, opened: bool) -> Tile:
         db, t = self.bot.db, now()
         post = await self._ensure_meta(post)
-        m = await db.fetchone("SELECT verified_at, demo_name, manual_level FROM members WHERE user_id=?",
+        m = await db.fetchone("SELECT verified_at, demo_name, manual_level, artist_name FROM members WHERE user_id=?",
                               (post["user_id"],))
         s = await db.fetchone("SELECT level FROM scores WHERE user_id=?", (post["user_id"],))
         level = (m and m["manual_level"]) or (s and s["level"]) or 1
@@ -214,6 +214,8 @@ class Discover(commands.Cog):
             genres = genres + ["Cover"]
         if m and m["demo_name"]:
             artist = m["demo_name"]
+        elif m and m["artist_name"]:
+            artist = m["artist_name"]
         else:
             user = self.bot.get_user(post["user_id"])
             artist = user.display_name if user else "Backline artist"

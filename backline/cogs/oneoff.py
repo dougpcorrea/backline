@@ -33,6 +33,7 @@ class OneOff(commands.Cog):
             await self.ratings_welcome()
             await self.showcase()
             await self.bio_standby()
+            await self.showcase_names()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -69,6 +70,30 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def showcase_names(self) -> None:
+        """Artistas convidados: nome que aparece nas redes (não o @). Também tenta de novo capa/título que faltaram."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_showcase_names_v1"):
+            return
+        await db.set_setting("oneoff_showcase_names_v1", "1")
+        from .demo import SHOWCASE_BASE
+        rows = await db.fetchall("SELECT p.* FROM posts p WHERE p.user_id > ? AND p.user_id <= ?",
+                                 (SHOWCASE_BASE, SHOWCASE_BASE + 50))
+        names = []
+        for p in rows:
+            d = await self.bot.collectors.post_details(p["platform"], p["url"], p["external_id"])
+            name = d.get("owner_name") or (f"@{d['owner']}" if d.get("owner") else None)
+            if name:
+                await db.execute("UPDATE members SET demo_name=? WHERE user_id=?", (name, p["user_id"]))
+                names.append(name)
+            if d.get("found") and not p["thumb_url"]:
+                await db.execute("UPDATE posts SET title=COALESCE(title, ?), thumb_url=?, meta_at=?, cover_path=NULL "
+                                 "WHERE id=?", (d.get("title"), d.get("thumb"), now(), p["id"]))
+        disc = self.bot.get_cog("Discover")
+        if disc:
+            await disc.publish_data()
+        await self.bot.log_admin(f"🏷️ Nomes dos artistas convidados: {', '.join(names) or 'nenhum encontrado'}")
 
     async def bio_standby(self) -> None:
         """Código na bio em stand-by: ajusta o texto do #start-here e libera quem ficou parado na verificação."""

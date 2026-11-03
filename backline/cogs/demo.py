@@ -90,7 +90,7 @@ class Demo(commands.Cog):
                 continue
             d = await self.bot.collectors.post_details(link.platform, link.url, link.external_id)
             uid = SHOWCASE_BASE + i
-            name = f"@{d['owner']}" if d.get("owner") else f"Guest artist {i}"
+            name = d.get("owner_name") or (f"@{d['owner']}" if d.get("owner") else f"Guest artist {i}")
             await db.execute("INSERT INTO members(user_id, locale, joined_at, verified_at, manual_level, is_test, "
                              "demo_name) VALUES(?,?,?,?,?,1,?) ON CONFLICT (user_id) DO UPDATE SET "
                              "demo_name=excluded.demo_name", (uid, "en", t, t, 5, name))

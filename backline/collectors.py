@@ -274,7 +274,7 @@ class Collectors:
         if platform == "instagram":
             return await self.instagram_post_details(url)
         endpoints = {"youtube": "https://www.youtube.com/oembed", "tiktok": "https://www.tiktok.com/oembed"}
-        out = {"found": None, "title": None, "thumb": None, "owner": None}
+        out = {"found": None, "title": None, "thumb": None, "owner": None, "owner_name": None}
         if platform not in endpoints:
             return out
         try:
@@ -282,7 +282,8 @@ class Collectors:
                                         timeout=aiohttp.ClientTimeout(total=15)) as r:
                 if r.status == 200:
                     data = await r.json(content_type=None)
-                    out.update(found=True, title=data.get("title") or None, thumb=data.get("thumbnail_url"))
+                    out.update(found=True, title=data.get("title") or None, thumb=data.get("thumbnail_url"),
+                               owner_name=(data.get("author_name") or "").strip() or None)
                     author = data.get("author_unique_id") or data.get("author_url") or ""
                     out["owner"] = author.rstrip("/").rsplit("@", 1)[-1].lower() or None
                 elif r.status in (400, 401, 403, 404):
@@ -313,6 +314,7 @@ class Collectors:
         it = items[0]
         out["found"] = True
         out["owner"] = (it.get("ownerUsername") or "").lower() or None
+        out["owner_name"] = (it.get("ownerFullName") or "").strip() or None
         for line in (it.get("caption") or "").splitlines():
             line = re.sub(r"[#@]\S+", "", line).strip(" -–—·|")
             if len(line) >= 2:

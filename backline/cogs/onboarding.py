@@ -57,6 +57,8 @@ class JoinView(discord.ui.View):
 async def open_profiles_modal(bot, interaction: discord.Interaction) -> None:
     await bot.db.upsert_member(interaction.user.id, "en")
     current = {h["platform"]: h["handle"] for h in await bot.db.handles_of(interaction.user.id)}
+    m = await bot.db.get_member(interaction.user.id)
+    current["artist_name"] = (m and m["artist_name"]) or None
     await interaction.response.send_modal(ProfilesModal(bot, "en", current))
 
 
@@ -126,6 +128,10 @@ class ProfilesModal(discord.ui.Modal):
     def __init__(self, bot, lang: str, current: dict[str, str]):
         super().__init__(title=t("modal_profiles", lang), timeout=600)
         self.bot, self.lang = bot, lang
+        self.name = discord.ui.TextInput(label="Artist name", required=False, max_length=60,
+                                         default=current.get("artist_name"),
+                                         placeholder="How your name shows in Backline (optional)")
+        self.add_item(self.name)
         self.inputs: dict[str, discord.ui.TextInput] = {}
         for platform in PLATFORMS:
             field = discord.ui.TextInput(label=t(f"field_{platform}", lang), required=False, max_length=100,
@@ -155,6 +161,8 @@ class ProfilesModal(discord.ui.Modal):
             await interaction.response.send_message(t("err_no_handle", lang), ephemeral=True)
             return
 
+        await db.execute("UPDATE members SET artist_name=? WHERE user_id=?",
+                         (self.name.value.strip()[:60] or None, uid))
         existing = {h["platform"]: h for h in await db.handles_of(uid)}
         for platform, handle in wanted.items():
             old = existing.get(platform)

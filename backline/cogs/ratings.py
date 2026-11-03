@@ -277,7 +277,9 @@ class Ratings(commands.Cog):
                             cover = None
                 tracks.append({"platform": t["platform"], "platform_name": PLATFORM_NAME[t["platform"]],
                                "url": t["url"], "title": t["title"] or f"Track {t['slot']}", "cover": cover})
-            artists.append({"uid": str(uid), "name": member.display_name if member else "Artist",
+            an = await db.fetchone("SELECT artist_name FROM members WHERE user_id=?", (uid,))
+            name = (an and an["artist_name"]) or (member.display_name if member else "Artist")
+            artists.append({"uid": str(uid), "name": name,
                             "genres": genres, "level": (m and (m["manual_level"] or m["level"])) or 1,
                             "tracks": tracks})
         ch = await self.bot.channel("ratings")
