@@ -84,13 +84,20 @@ async def launch_or_explain(bot, interaction: discord.Interaction, what: str) ->
         err = e
     await bot.log_admin(f"⚠️ {what} não abriu para {interaction.user.mention} "
                         f"({getattr(interaction, 'locale', '?')}): `{type(err).__name__}: {str(err)[:250]}`")
-    msg = (f"😕 Discord couldn't open {what} on this device. Try updating the Discord app, or open it "
-           "from a computer or discord.com in a browser. If it keeps happening, let us know in suggestions!")
+    view = discord.ui.View()
+    if what == "Discover":
+        msg = ("😕 Your Discord app can't open apps (Activities) on this device — no worries, you can use "
+               "**Discover in your browser** instead. Updating the Discord app or using a computer also works.")
+        view.add_item(discord.ui.Button(label="Open Discover in browser", emoji="🌐",
+                                        url="https://dougpcorrea.github.io/backline/"))
+    else:
+        msg = (f"😕 Your Discord app can't open {what} on this device. Try updating the Discord app, or open it "
+               "from a computer.")
     try:
         if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
+            await interaction.followup.send(msg, view=view, ephemeral=True)
         else:
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.response.send_message(msg, view=view, ephemeral=True)
     except discord.HTTPException:
         pass
 
