@@ -32,6 +32,7 @@ class OneOff(commands.Cog):
             await self.mark_cover()
             await self.ratings_welcome()
             await self.showcase()
+            await self.bio_standby()
         except Exception as e:  # noqa: BLE001
             await self.bot.log_admin(f"⚠️ Tarefa única falhou: `{str(e)[:300]}`")
 
@@ -68,6 +69,33 @@ class OneOff(commands.Cog):
                     await member.remove_roles(*remove, reason="Backline tester reset")
                 except Exception:  # noqa: BLE001
                     pass
+
+    async def bio_standby(self) -> None:
+        """Código na bio em stand-by: ajusta o texto do #start-here e libera quem ficou parado na verificação."""
+        db = self.bot.db
+        if await db.get_setting("oneoff_bio_standby_v1"):
+            return
+        await db.set_setting("oneoff_bio_standby_v1", "1")
+        text = await db.get_setting("welcome_text")
+        old = "verify ownership using a temporary code in your bio."
+        if text and old in text:
+            await db.set_setting("welcome_text", text.replace(
+                "accounts and " + old, "accounts and pick your genres. You're in.").replace(
+                old, "pick your genres. You're in."))
+        setup = self.bot.get_cog("ServerSetup")
+        if setup and self.bot.guild:
+            await setup.refresh_welcome(self.bot.guild)
+        from .onboarding import verify_pending
+        rows = await db.fetchall("SELECT DISTINCT h.user_id FROM handles h JOIN members m ON m.user_id = h.user_id "
+                                 "WHERE h.verified = 0 AND m.left_at IS NULL AND m.demo_name IS NULL")
+        freed = []
+        for r in rows:
+            user = self.bot.get_user(int(r["user_id"]))
+            if user:
+                await verify_pending(self.bot, user)
+                freed.append(user.mention)
+        await self.bot.log_admin("🔓 Verificação por código na bio em stand-by (religar: `/admin bio-check on`)."
+                                 + (f" Liberados: {', '.join(freed)}" if freed else ""))
 
     async def showcase(self) -> None:
         """Troca as publicações fictícias (links example.com) por 5 publicações reais de artistas convidados."""

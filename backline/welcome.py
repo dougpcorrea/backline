@@ -40,7 +40,7 @@ Get an honest, anonymous read on the quality of your music in {ratings}. Submit 
 Ratings are separate from your participation level, private, and only used to recommend music and connect artists at a similar stage. **Every artist you rate also gives your level a small boost — up to 1.5×.**
 
 ### 🚀 05 — Get Started
-🎸 **Join** — Register your Instagram and/or YouTube accounts and verify ownership using a temporary code in your bio.
+🎸 **Join** — Register your Instagram and/or YouTube accounts and pick your genres. You're in.
 👤 **My Profiles** — View your verification status, update your social accounts, or manage your musical genres.
 
 Once verified, introduce yourself, share your music, and start discovering other artists.

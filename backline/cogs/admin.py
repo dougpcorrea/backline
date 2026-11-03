@@ -368,6 +368,13 @@ class Admin(commands.Cog):
     async def _wait_ready(self) -> None:
         await self.bot.wait_until_ready()
 
+    @admin.command(name="bio-check", description="Ligar/desligar a verificação por código na bio")
+    async def bio_check(self, interaction: discord.Interaction, state: Literal["on", "off"]) -> None:
+        await self.bot.db.set_setting("bio_check", "1" if state == "on" else "0")
+        msg = ("🔐 Verificação por código na bio **ligada**." if state == "on" else
+               "🔓 Verificação por código na bio **desligada**: basta informar o @ (o perfil precisa existir).")
+        await interaction.response.send_message(msg, ephemeral=True)
+
     @admin.command(name="founder", description="Dar ou tirar o cargo Founder Member de alguém")
     async def founder(self, interaction: discord.Interaction, member: discord.Member,
                       action: Literal["add", "remove"] = "add") -> None:

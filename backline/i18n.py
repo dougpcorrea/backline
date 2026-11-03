@@ -15,10 +15,10 @@ STRINGS: dict[str, dict[str, str]] = {
     },
     "panel_desc": {
         "en": "A community of independent artists who discover, support and grow together.\n\n"
-              "🎸 **Join** — tell us your Instagram and/or YouTube and verify them with a code in your bio.\n"
+              "🎸 **Join** — tell us your Instagram and/or YouTube and pick your genres. That's it.\n"
               "👤 **My profiles** — see your verification status, update your profiles or genres.",
         "pt": "Uma comunidade de artistas independentes que se descobrem, se apoiam e crescem juntos.\n"
-              "Clique no botão abaixo, informe seus perfis e confirme com um código na bio.",
+              "Clique no botão abaixo, informe seus perfis e escolha seus gêneros.",
     },
     "btn_join": {"en": "Join / Update profiles", "pt": "Entrar / Atualizar perfis"},
     "modal_profiles": {"en": "Your profiles", "pt": "Seus perfis"},

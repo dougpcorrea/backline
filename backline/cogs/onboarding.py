@@ -1,4 +1,4 @@
-"""Entrada na comunidade: perfis, gêneros e verificação por código na bio."""
+"""Entrada na comunidade: perfis, gêneros e verificação (código na bio em stand-by: /admin bio-check)."""
 from __future__ import annotations
 
 import secrets
@@ -79,10 +79,13 @@ async def status_card(bot, user_id: int, header: str | None = None) -> tuple[dis
         state = "verified" if h["verified"] else "not verified yet"
         lines.append(f"{STATUS_ICON[bool(h['verified'])]} **{PLATFORM_NAME[h['platform']]}** · @{h['handle']} — {state}")
     desc = (header + "\n\n" if header else "") + ("\n".join(lines) or "No profiles yet.")
-    if pending and member and member["verify_code"]:
+    bio = await bio_check_on(bot)
+    if pending and member and member["verify_code"] and bio:
         desc += (f"\n\n**To verify the ⏳ profiles:** add this code anywhere in their bio, save, "
                  f"then click **{verb}**:\n# `{member['verify_code']}`")
-    elif verified_any:
+    elif pending and not bio:
+        desc += f"\n\nTap **{verb}** to confirm the ⏳ profiles."
+    elif verified_any and bio:
         desc += "\n\nYou can remove the code from your bios."
     colour = 0x30A46C if not pending else (0xC9A227 if verified_any else 0xE5484D)
     embed = discord.Embed(title="👤 Your Backline profiles", description=desc, colour=colour)
@@ -215,6 +218,13 @@ async def handle_genre_click(bot, interaction: discord.Interaction, custom_id: s
     if custom_id == "bl:genre_done":
         await sync_genre_roles(bot, interaction.user, chosen)
         pending = [h for h in await db.handles_of(uid) if not h["verified"]]
+        if pending and not await bio_check_on(bot):
+            await interaction.response.edit_message(content="🔎 Confirming your profiles… one moment.",
+                                                    embed=None, view=None)
+            notes = await verify_pending(bot, interaction.user)
+            embed, view = await status_card(bot, uid, "✅ Genres saved.\n" + "\n".join(notes))
+            await interaction.edit_original_response(content=None, embed=embed, view=view)
+            return
         header = ("✅ Genres saved." if not pending else "**Last step:** prove these profiles are yours.")
         embed, view = await status_card(bot, uid, header)
         await interaction.response.edit_message(content=None, embed=embed, view=view)
@@ -264,19 +274,20 @@ async def sync_genre_roles(bot, user: discord.abc.User, chosen: list[str]) -> No
         pass
 
 
-async def run_verification(bot, interaction: discord.Interaction) -> None:
-    """Confere o código na bio de cada perfil pendente e responde com o cartão de status."""
-    db, uid = bot.db, interaction.user.id
-    member = await db.get_member(uid)
-    if not member or not member["verify_code"]:
-        await interaction.response.send_message(t("start_first", "en"), ephemeral=True)
-        return
-    await interaction.response.send_message("🔎 Checking your bios… this can take up to a minute.", ephemeral=True)
+async def bio_check_on(bot) -> bool:
+    """Verificação por código na bio. Em stand-by (desligada) enquanto a comunidade é pequena: /admin bio-check."""
+    return (await bot.db.get_setting("bio_check", "0")) == "1"
 
-    code = member["verify_code"].upper()
+
+async def verify_pending(bot, user: discord.abc.User) -> list[str]:
+    """Verifica os perfis pendentes. Com o código na bio desligado, basta o perfil existir e não ser de outro membro."""
+    db, uid = bot.db, user.id
+    member = await db.get_member(uid)
+    bio = await bio_check_on(bot)
+    code = (member["verify_code"] or "").upper()
     await db.execute("UPDATE members SET verify_tried=1 WHERE user_id=?", (uid,))
-    ok, missing, failed = [], [], []
-    # contas TESTER (is_test=1, sem demo_name): perfis fictícios valem sem código na bio
+    ok, missing, failed, taken = [], [], [], []
+    # contas TESTER (is_test=1, sem demo_name): perfis fictícios valem sem conferir nada
     tester = bool(member["is_test"]) and not member["demo_name"]
     for h in await db.handles_of(uid):
         if h["verified"]:
@@ -286,17 +297,22 @@ async def run_verification(bot, interaction: discord.Interaction) -> None:
             await db.execute("UPDATE handles SET verified=1 WHERE user_id=? AND platform=?", (uid, platform))
             ok.append(PLATFORM_NAME[platform])
             continue
+        owner = await db.handle_owner(platform, handle)
+        if owner and owner != uid:
+            taken.append(f"{PLATFORM_NAME[platform]} @{handle}")
+            continue
         try:
             profile = await bot.collectors.profile(platform, handle)
         except CollectorError as e:
-            failed.append(PLATFORM_NAME[platform])
             await bot.log_admin(f"⚠️ Verificação {platform} @{handle} falhou: {e}")
-            continue
-        if profile and code in (profile.bio or "").upper():
-            owner = await db.handle_owner(platform, handle)
-            if owner and owner != uid:
-                missing.append(PLATFORM_NAME[platform])
+            if bio:
+                failed.append(PLATFORM_NAME[platform])
                 continue
+            profile = None   # sem bio: não trava a entrada por causa de instabilidade da API
+            await db.execute("UPDATE handles SET verified=1 WHERE user_id=? AND platform=?", (uid, platform))
+            ok.append(PLATFORM_NAME[platform])
+            continue
+        if profile and (not bio or code in (profile.bio or "").upper()):
             await db.execute("UPDATE handles SET verified=1, external_id=? WHERE user_id=? AND platform=?",
                              (profile.external_id, uid, platform))
             ok.append(PLATFORM_NAME[platform])
@@ -310,16 +326,34 @@ async def run_verification(bot, interaction: discord.Interaction) -> None:
             await db.execute("UPDATE members SET verified_at=? WHERE user_id=?", (now(), uid))
             await bot.log_admin(f"🆕 Novo membro verificado: <@{uid}> ({', '.join(ok)})")
             notes.append("🎉 **Welcome to Backline!** You now have access to the community.")
-        await grant_member_roles(bot, interaction.user)
-        notes.append(f"✅ Just verified: **{', '.join(ok)}**")
-    if missing:
+        await grant_member_roles(bot, user)
+        notes.append(f"✅ Confirmed: **{', '.join(ok)}**")
+    if taken:
+        notes.append(f"❌ Already registered by another member: **{', '.join(taken)}**. If it's yours, "
+                     "open a ticket in suggestions.")
+    if missing and bio:
         notes.append(f"⏳ Code not found yet: **{', '.join(missing)}** — check that it's saved in the bio "
                      f"and the profile is public, wait a minute and click **Verify again**.")
+    elif missing:
+        notes.append(f"⏳ Couldn't find **{', '.join(missing)}** — check the spelling of your @ and that the "
+                     "profile is public, then tap **Update profiles**.")
     if failed:
         notes.append(f"⚠️ Couldn't reach **{', '.join(failed)}** right now — try again in a few minutes.")
     if not notes:
         notes.append("Everything is already verified. ✅")
-    embed, view = await status_card(bot, uid, "\n".join(notes))
+    return notes
+
+
+async def run_verification(bot, interaction: discord.Interaction) -> None:
+    """Botão Verify: confere os perfis pendentes e responde com o cartão de status."""
+    member = await bot.db.get_member(interaction.user.id)
+    if not member:
+        await interaction.response.send_message(t("start_first", "en"), ephemeral=True)
+        return
+    await interaction.response.send_message("🔎 Checking your profiles… this can take up to a minute.",
+                                            ephemeral=True)
+    notes = await verify_pending(bot, interaction.user)
+    embed, view = await status_card(bot, interaction.user.id, "\n".join(notes))
     await interaction.edit_original_response(content=None, embed=embed, view=view)
 
 
