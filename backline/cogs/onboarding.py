@@ -1,6 +1,8 @@
 """Entrada na comunidade: perfis, gêneros e verificação (código na bio em stand-by: /admin bio-check)."""
 from __future__ import annotations
 
+import asyncio
+
 import secrets
 
 import discord
@@ -282,6 +284,36 @@ async def sync_genre_roles(bot, user: discord.abc.User, chosen: list[str]) -> No
         pass
 
 
+WELCOME_LINES = [
+    "👋 Everyone, say hi to {who}!",
+    "🎸 A new artist just joined the backline: {who}!",
+    "🎶 Welcome aboard, {who}!",
+    "✨ Fresh sound incoming — welcome, {who}!",
+]
+
+
+async def welcome_in_general(bot, uid: int) -> None:
+    """Mensagem de boas-vindas no #general quando alguém vira membro."""
+    import random
+    ch = await bot.channel("general")
+    if not ch:
+        return
+    db = bot.db
+    m = await db.get_member(uid)
+    genres = [r["genre"] for r in await db.fetchall("SELECT genre FROM member_genres WHERE user_id=?", (uid,))]
+    who = f"<@{uid}>" + (f" (**{m['artist_name']}**)" if m and m["artist_name"] else "")
+    text = random.choice(WELCOME_LINES).format(who=who)
+    if genres:
+        text += f"\n🎵 Plays: **{' · '.join(genres)}**"
+    text += (f"\n\nStart by sharing your music in {await bot.channel_mention('post')} and checking out other "
+             f"artists in {await bot.channel_mention('discover')}. Tell us a bit about yourself! 🙌")
+    try:
+        msg = await ch.send(text, allowed_mentions=discord.AllowedMentions(users=True))
+        await msg.add_reaction("👋")
+    except discord.HTTPException:
+        pass
+
+
 async def bio_check_on(bot) -> bool:
     """Verificação por código na bio. Em stand-by (desligada) enquanto a comunidade é pequena: /admin bio-check."""
     return (await bot.db.get_setting("bio_check", "0")) == "1"
@@ -334,6 +366,7 @@ async def verify_pending(bot, user: discord.abc.User) -> list[str]:
             await db.execute("UPDATE members SET verified_at=? WHERE user_id=?", (now(), uid))
             await bot.log_admin(f"🆕 Novo membro verificado: <@{uid}> ({', '.join(ok)})")
             notes.append("🎉 **Welcome to Backline!** You now have access to the community.")
+            asyncio.create_task(welcome_in_general(bot, uid))
         await grant_member_roles(bot, user)
         notes.append(f"✅ Confirmed: **{', '.join(ok)}**")
     if taken:
