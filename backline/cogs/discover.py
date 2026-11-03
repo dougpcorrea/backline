@@ -26,7 +26,7 @@ META_REFRESH = 2 * DAY  # miniaturas do TikTok expiram: renova quando ficam velh
 PUBLIC_REFRESH_HOURS = 3
 DATA_POOL = 30            # quantas faixas vão para a Activity (ela mostra 6 por vez)
 BUCKET = "backline"
-DISCOVER_MSG_VERSION = "5"
+DISCOVER_MSG_VERSION = "6"
 MIN_DISCOVER_LEVEL = 3
 MIN_MEMBERS_FOR_LEVEL_RULE = 20   # a regra do Lv.3 só vale quando o servidor tiver pelo menos 20 membros
 
@@ -309,7 +309,9 @@ class Discover(commands.Cog):
                 "Every track you open and comment on here raises your level (the bot checks comments every 30 minutes).\n\n"
                 "-# Enjoyed something? Show some love: watch, like, comment and follow."),
             discord.ui.Separator(),
-            discord.ui.ActionRow(view.button),
+            discord.ui.ActionRow(view.button, discord.ui.Button(
+                label="Open in browser", emoji="🌐", url="https://dougpcorrea.github.io/backline/")),
+            discord.ui.TextDisplay("-# Discover not opening on your phone? Use **Open in browser**."),
             accent_colour=ACCENT))
         if mid:
             try:
