@@ -28,6 +28,18 @@ ARTISTS = [
 ]
 
 
+# Vitrine: publicações reais (links de verdade) de artistas convidados, no lugar das fictícias.
+# Ficam como membros "demo" (sem conta no Discord), não entram na coleta de comentários nem no ranking.
+SHOWCASE_BASE = DEMO_BASE_ID + 100
+SHOWCASE = [
+    ("https://www.youtube.com/shorts/2C3Hrr1U0Ok", "Latin"),
+    ("https://www.instagram.com/p/DfPRhSEu77g/", "Rock"),
+    ("https://www.instagram.com/reel/DVAYfL6jX0_/", "Hip-Hop / Rap"),
+    ("https://www.youtube.com/shorts/N_26BEzlSOM", "Pop"),
+    ("https://www.instagram.com/p/DfQBl7gBSpS/", "Hip-Hop / Rap"),
+]
+
+
 class Demo(commands.Cog):
     demo = app_commands.Group(name="demo", description="Dados de demonstração",
                               default_permissions=discord.Permissions(administrator=True), guild_only=True)
@@ -68,10 +80,37 @@ class Demo(commands.Cog):
                 count += 1
         return count
 
-    async def clear(self) -> int:
+    async def seed_showcase(self) -> int:
+        from ..links import parse_post_url
+        db, t, count = self.bot.db, now(), 0
+        for i, (url, genre) in enumerate(SHOWCASE, start=1):
+            link = parse_post_url(url)
+            if not link or await db.fetchone("SELECT id FROM posts WHERE platform=? AND external_id=?",
+                                             (link.platform, link.external_id)):
+                continue
+            d = await self.bot.collectors.post_details(link.platform, link.url, link.external_id)
+            uid = SHOWCASE_BASE + i
+            name = f"@{d['owner']}" if d.get("owner") else f"Guest artist {i}"
+            await db.execute("INSERT INTO members(user_id, locale, joined_at, verified_at, manual_level, is_test, "
+                             "demo_name) VALUES(?,?,?,?,?,1,?) ON CONFLICT (user_id) DO UPDATE SET "
+                             "demo_name=excluded.demo_name", (uid, "en", t, t, 5, name))
+            await db.execute("INSERT INTO scores(user_id, level, updated_at) VALUES(?,?,?) ON CONFLICT (user_id) "
+                             "DO UPDATE SET level=excluded.level", (uid, 5, t))
+            await db.execute("INSERT INTO member_genres(user_id, genre) VALUES(?,?) ON CONFLICT DO NOTHING",
+                             (uid, genre))
+            await db.insert_returning_id(
+                "INSERT INTO posts(user_id, platform, url, external_id, created_at, checkpoints_done, title, "
+                "thumb_url, meta_at, kind, genres) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                (uid, link.platform, link.url, link.external_id, t - i * 3600, 99, d.get("title"),
+                 d.get("thumb"), t if d.get("found") else None, "original", genre))
+            count += 1
+        return count
+
+    async def clear(self, showcase: bool = True) -> int:
         db = self.bot.db
         rows = await db.fetchall("SELECT p.id, p.channel_id, p.message_id FROM posts p "
-                                 "JOIN members m ON m.user_id = p.user_id WHERE m.demo_name IS NOT NULL")
+                                 "JOIN members m ON m.user_id = p.user_id WHERE m.demo_name IS NOT NULL "
+                                 + ("" if showcase else f"AND p.user_id < {SHOWCASE_BASE}"))
         for r in rows:
             ch = self.bot.get_channel(r["channel_id"]) if r["channel_id"] else None
             if isinstance(ch, discord.TextChannel) and r["message_id"]:
@@ -80,6 +119,8 @@ class Demo(commands.Cog):
                 except discord.HTTPException:
                     pass
         ids = [DEMO_BASE_ID + i for i in range(1, len(ARTISTS) + 1)]
+        if showcase:
+            ids += [SHOWCASE_BASE + i for i in range(1, len(SHOWCASE) + 1)]
         for uid in ids:
             for sql in ("DELETE FROM discover_seen WHERE post_id IN (SELECT id FROM posts WHERE user_id=?)",
                         "DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE user_id=?)",

@@ -162,7 +162,9 @@ async def posts_due_for_collection(db: Database, checkpoints_hours: list[int] | 
     """Publicações (não demo) dos últimos 7 dias cuja próxima leitura já venceu."""
     ts = now()
     rows = await db.fetchall("SELECT * FROM posts WHERE removed = 0 AND created_at >= ? "
-                             "AND external_id NOT LIKE 'demo-%'", (ts - COLLECT_DAYS * DAY - 6 * 3600,))
+                             "AND external_id NOT LIKE 'demo-%' AND user_id NOT IN "
+                             "(SELECT user_id FROM members WHERE demo_name IS NOT NULL)",
+                             (ts - COLLECT_DAYS * DAY - 6 * 3600,))
     due = []
     for row in rows:
         age = ts - row["created_at"]

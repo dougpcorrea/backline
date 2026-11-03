@@ -111,7 +111,8 @@ class Admin(commands.Cog):
             posts = await db.fetchall("SELECT * FROM posts WHERE id=? AND removed=0", (post_id,))
         else:
             posts = await db.fetchall("SELECT * FROM posts WHERE removed=0 AND created_at>=? "
-                                      "AND external_id NOT LIKE 'demo-%'", (now() - 7 * 86400,))
+                                      "AND external_id NOT LIKE 'demo-%' AND user_id NOT IN "
+                                      "(SELECT user_id FROM members WHERE demo_name IS NOT NULL)", (now() - 7 * 86400,))
         if not posts:
             await interaction.followup.send("Nenhuma publicação real encontrada.", ephemeral=True)
             return
