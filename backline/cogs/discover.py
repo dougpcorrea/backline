@@ -72,11 +72,27 @@ class PublicView(discord.ui.LayoutView):
         self.button.callback = self.on_click
 
     async def on_click(self, interaction: discord.Interaction) -> None:
-        try:
-            await interaction.response.launch_activity()
-        except discord.HTTPException:
-            await interaction.response.send_message(
-                "Discover is warming up — try again in a minute!", ephemeral=True)
+        await launch_or_explain(self.bot, interaction, "Discover")
+
+
+async def launch_or_explain(bot, interaction: discord.Interaction, what: str) -> None:
+    """Abre a Activity. Se o Discord recusar, explica ao membro e registra o motivo no canal admin."""
+    try:
+        await interaction.response.launch_activity()
+        return
+    except Exception as e:  # noqa: BLE001
+        err = e
+    await bot.log_admin(f"⚠️ {what} não abriu para {interaction.user.mention} "
+                        f"({getattr(interaction, 'locale', '?')}): `{type(err).__name__}: {str(err)[:250]}`")
+    msg = (f"😕 Discord couldn't open {what} on this device. Try updating the Discord app, or open it "
+           "from a computer or discord.com in a browser. If it keeps happening, let us know in suggestions!")
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except discord.HTTPException:
+        pass
 
 
 class PersonalView(discord.ui.LayoutView):

@@ -46,6 +46,7 @@ class Backline(commands.Bot):
         self.collectors = Collectors(self.cfg, self.session)
         for ext in EXTENSIONS:
             await self.load_extension(ext)
+        self._install_error_logging()
         if self.cfg.guild_id:
             guild = discord.Object(id=self.cfg.guild_id)
             self.tree.copy_global_to(guild=guild)
@@ -84,6 +85,26 @@ class Backline(commands.Bot):
     async def is_paused(self) -> bool:
         return (await self.db.get_setting("paused", "0")) == "1"
 
+    def _install_error_logging(self) -> None:
+        """Erros em botões, formulários e comandos vão para o canal admin (e o membro recebe uma resposta)."""
+        bot = self
+
+        async def view_error(_self, interaction, error, _item=None):
+            logging.exception("interaction error", exc_info=error)
+            await bot.log_admin(_error_text(interaction, error))
+            await _reply_failed(interaction)
+
+        for cls in {getattr(discord.ui.view, "BaseView", discord.ui.View), discord.ui.View, discord.ui.Modal}:
+            cls.on_error = view_error
+        if hasattr(discord.ui, "LayoutView"):
+            discord.ui.LayoutView.on_error = view_error
+
+        @self.tree.error
+        async def on_app_command_error(interaction, error):
+            logging.exception("command error", exc_info=error)
+            await bot.log_admin(_error_text(interaction, error))
+            await _reply_failed(interaction)
+
     async def log_admin(self, text: str) -> None:
         log.info(text)
         ch = await self.channel("admin")
@@ -103,3 +124,20 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+def _error_text(interaction, error) -> str:
+    where = (interaction.data or {}).get("custom_id") or getattr(interaction.command, "qualified_name", "?")
+    err = getattr(error, "original", error)
+    return f"⚠️ Erro em `{where}` para {interaction.user.mention}: `{type(err).__name__}: {str(err)[:300]}`"
+
+
+async def _reply_failed(interaction) -> None:
+    msg = "😕 Something went wrong on our side — please try again in a moment."
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except Exception:  # noqa: BLE001
+        pass

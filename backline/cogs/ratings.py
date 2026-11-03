@@ -102,11 +102,8 @@ class RatingsPanel(discord.ui.View):
             await interaction.response.send_message(
                 "🔒 Submit **your 3 tracks** first — that unlocks the Ratings app.", ephemeral=True)
             return
-        try:
-            await interaction.response.launch_activity()
-        except discord.HTTPException:
-            await interaction.response.send_message("The Ratings app is warming up — try again in a minute!",
-                                                    ephemeral=True)
+        from .discover import launch_or_explain
+        await launch_or_explain(self.bot, interaction, "Ratings")
 
     @discord.ui.button(label="My results", emoji="📊", style=discord.ButtonStyle.secondary,
                        custom_id="bl:rate_results")
